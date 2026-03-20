@@ -1,0 +1,76 @@
+name: C/C++ CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        compiler: [gcc, clang]
+
+    runs-on: ubuntu-latest
+    env:
+      CC: ${{ matrix.compiler }}
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install CMake and Clang
+        run: sudo apt update && sudo apt install -y cmake
+
+      - name: Install Clang
+        if: matrix.compiler == 'clang'
+        run: sudo apt install -y clang
+
+      - name: Tests
+        run: bash scripts/test.sh
+
+  test-server:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install libevent, CMake, FFMpeg
+        run: sudo apt update && sudo apt install -y libevent-dev cmake ffmpeg xxd
+
+      - name: Test the example server
+        run: sudo bash scripts/test-server.sh
+
+  check-fmt:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install libevent
+        run: sudo apt update && sudo apt install -y clang-format
+
+      - name: Download run-clang-format
+        run: git submodule update --init run-clang-format
+
+      - name: Check code formatting
+        run: bash scripts/check-fmt.sh
+
+  deploy-docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install Doxygen
+        run: sudo apt update && sudo apt install -y doxygen graphviz
+
+      - name: Build the docs
+        run: bash scripts/docs.sh
+
+      - name: Deploy the docs
+        if: ${{ !env.ACT && github.event_name != 'pull_request' }}
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/
