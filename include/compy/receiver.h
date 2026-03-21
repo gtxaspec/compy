@@ -48,8 +48,7 @@ typedef struct Compy_RtpReceiver Compy_RtpReceiver;
  * `.self` field may be NULL if no backchannel is configured.
  */
 Compy_RtpReceiver *Compy_RtpReceiver_new(
-    Compy_Rtcp *rtcp,
-    Compy_AudioReceiver audio_receiver) COMPY_PRIV_MUST_USE;
+    Compy_Rtcp *rtcp, Compy_AudioReceiver audio_receiver) COMPY_PRIV_MUST_USE;
 
 /**
  * Feeds raw received data into the receiver for demuxing.

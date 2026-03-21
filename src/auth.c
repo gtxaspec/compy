@@ -32,8 +32,8 @@ static void md5_final(MD5_CTX *ctx, uint8_t digest[16]);
 #define I(x, y, z) ((y) ^ ((x) | ~(z)))
 #define ROT(x, n)  (((x) << (n)) | ((x) >> (32 - (n))))
 
-#define STEP(f, a, b, c, d, x, t, s)                                          \
-    (a) += f((b), (c), (d)) + (x) + (t);                                      \
+#define STEP(f, a, b, c, d, x, t, s)                                           \
+    (a) += f((b), (c), (d)) + (x) + (t);                                       \
     (a) = ROT((a), (s));                                                       \
     (a) += (b)
 
@@ -268,8 +268,7 @@ void compy_digest_response(
  * Authorization header. Advances *p past the consumed parameter.
  */
 static int parse_digest_param(
-    const char **p, char *key, size_t key_max, char *value,
-    size_t value_max) {
+    const char **p, char *key, size_t key_max, char *value, size_t value_max) {
     const char *s = *p;
 
     /* Skip whitespace and commas */
@@ -319,8 +318,7 @@ static int parse_digest_param(
 }
 
 int compy_auth_check(
-    Compy_Auth *self, Compy_Context *ctx,
-    const Compy_Request *req) {
+    Compy_Auth *self, Compy_Context *ctx, const Compy_Request *req) {
     assert(self);
     assert(ctx);
     assert(req);
@@ -348,10 +346,9 @@ int compy_auth_check(
 
     /* Null-terminate for parsing */
     char auth_str[1024];
-    size_t copy_len =
-        auth_value.len - prefix_len < sizeof(auth_str) - 1
-            ? auth_value.len - prefix_len
-            : sizeof(auth_str) - 1;
+    size_t copy_len = auth_value.len - prefix_len < sizeof(auth_str) - 1
+                          ? auth_value.len - prefix_len
+                          : sizeof(auth_str) - 1;
     memcpy(auth_str, auth_value.ptr + prefix_len, copy_len);
     auth_str[copy_len] = '\0';
 
@@ -422,8 +419,8 @@ int compy_auth_check(
 
 challenge:
     compy_header(
-        ctx, COMPY_HEADER_WWW_AUTHENTICATE,
-        "Digest realm=\"%s\", nonce=\"%s\"", self->realm, self->nonce);
+        ctx, COMPY_HEADER_WWW_AUTHENTICATE, "Digest realm=\"%s\", nonce=\"%s\"",
+        self->realm, self->nonce);
     compy_respond(ctx, COMPY_STATUS_UNAUTHORIZED, "Unauthorized");
     return -1;
 }

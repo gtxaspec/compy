@@ -38,8 +38,7 @@ static void Compy_Backchannel_drop(VSelf) {
 
 implExtern(Compy_Droppable, Compy_Backchannel);
 
-Compy_RtpReceiver *
-Compy_Backchannel_get_receiver(Compy_Backchannel *self) {
+Compy_RtpReceiver *Compy_Backchannel_get_receiver(Compy_Backchannel *self) {
     assert(self);
     return self->receiver;
 }

@@ -16,8 +16,7 @@ TEST sr_serialize_basic(void) {
     };
 
     uint8_t buffer[COMPY_RTCP_MAX_PACKET_SIZE];
-    const size_t len =
-        Compy_RtcpSenderReport_serialize(info, "test", buffer);
+    const size_t len = Compy_RtcpSenderReport_serialize(info, "test", buffer);
 
     ASSERT(len > 0);
 

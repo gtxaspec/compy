@@ -10,8 +10,8 @@ struct Compy_RtpReceiver {
     Compy_AudioReceiver audio_receiver;
 };
 
-Compy_RtpReceiver *Compy_RtpReceiver_new(
-    Compy_Rtcp *rtcp, Compy_AudioReceiver audio_receiver) {
+Compy_RtpReceiver *
+Compy_RtpReceiver_new(Compy_Rtcp *rtcp, Compy_AudioReceiver audio_receiver) {
     Compy_RtpReceiver *self = malloc(sizeof *self);
     assert(self);
 

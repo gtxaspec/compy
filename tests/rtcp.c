@@ -93,7 +93,8 @@ TEST rtcp_handle_rr(void) {
     /* No RR received yet */
     ASSERT_EQ(NULL, Compy_Rtcp_get_last_rr(rtcp));
 
-    /* Build a fake RR packet: header (4) + reporter SSRC (4) + report block (24) = 32 */
+    /* Build a fake RR packet: header (4) + reporter SSRC (4) + report block
+     * (24) = 32 */
     uint8_t rr_packet[32];
     /* Header: V=2, RC=1, PT=201, length=7 */
     rr_packet[0] = 0x81;
@@ -118,7 +119,8 @@ TEST rtcp_handle_rr(void) {
     /* Rest: zeros */
     memset(&rr_packet[16], 0, 16);
 
-    const int ret = Compy_Rtcp_handle_incoming(rtcp, rr_packet, sizeof rr_packet);
+    const int ret =
+        Compy_Rtcp_handle_incoming(rtcp, rr_packet, sizeof rr_packet);
     ASSERT_EQ(0, ret);
 
     const Compy_RtcpReportBlock *rr = Compy_Rtcp_get_last_rr(rtcp);

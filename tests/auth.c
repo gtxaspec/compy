@@ -35,8 +35,8 @@ TEST digest_response_rfc2617(void) {
      */
     char response[33];
     compy_digest_response(
-        response, "admin", "IP Camera", "secret", "testnonce123",
-        "DESCRIBE", "rtsp://192.168.1.1/stream");
+        response, "admin", "IP Camera", "secret", "testnonce123", "DESCRIBE",
+        "rtsp://192.168.1.1/stream");
 
     /* Verify it's a 32-char lowercase hex string */
     ASSERT_EQ(32, strlen(response));
@@ -49,15 +49,15 @@ TEST digest_response_rfc2617(void) {
     /* Verify deterministic: same inputs produce same output */
     char response2[33];
     compy_digest_response(
-        response2, "admin", "IP Camera", "secret", "testnonce123",
-        "DESCRIBE", "rtsp://192.168.1.1/stream");
+        response2, "admin", "IP Camera", "secret", "testnonce123", "DESCRIBE",
+        "rtsp://192.168.1.1/stream");
     ASSERT_STR_EQ(response, response2);
 
     /* Verify different password produces different response */
     char response3[33];
     compy_digest_response(
-        response3, "admin", "IP Camera", "wrong", "testnonce123",
-        "DESCRIBE", "rtsp://192.168.1.1/stream");
+        response3, "admin", "IP Camera", "wrong", "testnonce123", "DESCRIBE",
+        "rtsp://192.168.1.1/stream");
     ASSERT_FALSE(strcmp(response, response3) == 0);
 
     PASS();
@@ -124,8 +124,7 @@ TEST auth_check_valid_credentials(void) {
     req1.start_line.uri = CharSlice99_from_str("rtsp://camera/stream");
     req1.header_map = Compy_HeaderMap_empty();
 
-    int first_ret __attribute__((unused)) =
-        compy_auth_check(auth, ctx1, &req1);
+    int first_ret __attribute__((unused)) = compy_auth_check(auth, ctx1, &req1);
 
     /* Extract nonce from response */
     char *nonce_start = strstr(buf1, "nonce=\"");
@@ -163,10 +162,8 @@ TEST auth_check_valid_credentials(void) {
     req2.start_line.uri = CharSlice99_from_str("rtsp://camera/stream");
     req2.header_map = Compy_HeaderMap_empty();
     Compy_HeaderMap_append(
-        &req2.header_map,
-        (Compy_Header){
-            COMPY_HEADER_AUTHORIZATION,
-            CharSlice99_from_str(auth_header)});
+        &req2.header_map, (Compy_Header){COMPY_HEADER_AUTHORIZATION,
+                                         CharSlice99_from_str(auth_header)});
 
     int ret = compy_auth_check(auth, ctx2, &req2);
     ASSERT_EQ(0, ret);
@@ -189,12 +186,12 @@ TEST auth_check_wrong_password(void) {
     req1.start_line.method = COMPY_METHOD_DESCRIBE;
     req1.start_line.uri = CharSlice99_from_str("rtsp://camera/stream");
     req1.header_map = Compy_HeaderMap_empty();
-    int first_ret __attribute__((unused)) =
-        compy_auth_check(auth, ctx1, &req1);
+    int first_ret __attribute__((unused)) = compy_auth_check(auth, ctx1, &req1);
 
     char *nonce_start = strstr(buf1, "nonce=\"") + strlen("nonce=\"");
     char nonce[64] = {0};
-    memcpy(nonce, nonce_start, (size_t)(strchr(nonce_start, '"') - nonce_start));
+    memcpy(
+        nonce, nonce_start, (size_t)(strchr(nonce_start, '"') - nonce_start));
 
     VTABLE(Compy_Context, Compy_Droppable).drop(ctx1);
 
@@ -221,10 +218,8 @@ TEST auth_check_wrong_password(void) {
     req2.start_line.uri = CharSlice99_from_str("rtsp://camera/stream");
     req2.header_map = Compy_HeaderMap_empty();
     Compy_HeaderMap_append(
-        &req2.header_map,
-        (Compy_Header){
-            COMPY_HEADER_AUTHORIZATION,
-            CharSlice99_from_str(auth_header)});
+        &req2.header_map, (Compy_Header){COMPY_HEADER_AUTHORIZATION,
+                                         CharSlice99_from_str(auth_header)});
 
     int ret = compy_auth_check(auth, ctx2, &req2);
     ASSERT_EQ(-1, ret);
@@ -248,12 +243,12 @@ TEST auth_check_unknown_user(void) {
     req1.start_line.method = COMPY_METHOD_DESCRIBE;
     req1.start_line.uri = CharSlice99_from_str("rtsp://camera/stream");
     req1.header_map = Compy_HeaderMap_empty();
-    int first_ret __attribute__((unused)) =
-        compy_auth_check(auth, ctx1, &req1);
+    int first_ret __attribute__((unused)) = compy_auth_check(auth, ctx1, &req1);
 
     char *nonce_start = strstr(buf1, "nonce=\"") + strlen("nonce=\"");
     char nonce[64] = {0};
-    memcpy(nonce, nonce_start, (size_t)(strchr(nonce_start, '"') - nonce_start));
+    memcpy(
+        nonce, nonce_start, (size_t)(strchr(nonce_start, '"') - nonce_start));
 
     VTABLE(Compy_Context, Compy_Droppable).drop(ctx1);
 
@@ -279,10 +274,8 @@ TEST auth_check_unknown_user(void) {
     req2.start_line.uri = CharSlice99_from_str("rtsp://camera/stream");
     req2.header_map = Compy_HeaderMap_empty();
     Compy_HeaderMap_append(
-        &req2.header_map,
-        (Compy_Header){
-            COMPY_HEADER_AUTHORIZATION,
-            CharSlice99_from_str(auth_header)});
+        &req2.header_map, (Compy_Header){COMPY_HEADER_AUTHORIZATION,
+                                         CharSlice99_from_str(auth_header)});
 
     int ret = compy_auth_check(auth, ctx2, &req2);
     ASSERT_EQ(-1, ret);
@@ -306,9 +299,8 @@ TEST auth_check_bad_format(void) {
     req.header_map = Compy_HeaderMap_empty();
     Compy_HeaderMap_append(
         &req.header_map,
-        (Compy_Header){
-            COMPY_HEADER_AUTHORIZATION,
-            CharSlice99_from_str("Basic dXNlcjpwYXNz")});
+        (Compy_Header){COMPY_HEADER_AUTHORIZATION,
+                       CharSlice99_from_str("Basic dXNlcjpwYXNz")});
 
     int ret = compy_auth_check(auth, ctx, &req);
     ASSERT_EQ(-1, ret);

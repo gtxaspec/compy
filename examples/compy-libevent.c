@@ -108,8 +108,7 @@ void compy_libevent_cb(struct bufferevent *bev, void *arg) {
 
         /* Try to parse a complete request */
         Compy_Request req = Compy_Request_uninit();
-        CharSlice99 data =
-            CharSlice99_new(ctx->buf, ctx->buf_len);
+        CharSlice99 data = CharSlice99_new(ctx->buf, ctx->buf_len);
 
         Compy_ParseResult result = Compy_Request_parse(&req, data);
 
@@ -132,8 +131,7 @@ void compy_libevent_cb(struct bufferevent *bev, void *arg) {
 
             /* Shift remaining data */
             if (consumed > 0 && consumed < ctx->buf_len) {
-                memmove(ctx->buf, ctx->buf + consumed,
-                        ctx->buf_len - consumed);
+                memmove(ctx->buf, ctx->buf + consumed, ctx->buf_len - consumed);
                 ctx->buf_len -= consumed;
             } else {
                 ctx->buf_len = 0;

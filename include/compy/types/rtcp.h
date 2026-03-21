@@ -86,8 +86,8 @@ size_t Compy_RtcpSenderReport_serialize(
  *
  * @return The total number of bytes written.
  */
-size_t Compy_RtcpBye_serialize(
-    uint32_t ssrc, uint8_t buffer[restrict]) COMPY_PRIV_MUST_USE;
+size_t Compy_RtcpBye_serialize(uint32_t ssrc, uint8_t buffer[restrict])
+    COMPY_PRIV_MUST_USE;
 
 /**
  * Deserializes an RTCP common header from @p data.

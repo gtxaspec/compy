@@ -85,8 +85,8 @@ int Compy_Rtcp_send_bye(Compy_Rtcp *self) {
     assert(self);
 
     uint8_t buffer[8];
-    const size_t len = Compy_RtcpBye_serialize(
-        Compy_RtpTransport_get_ssrc(self->rtp), buffer);
+    const size_t len =
+        Compy_RtcpBye_serialize(Compy_RtpTransport_get_ssrc(self->rtp), buffer);
 
     const Compy_IoVecSlice bufs =
         (Compy_IoVecSlice)Slice99_typed_from_array((struct iovec[]){
@@ -124,8 +124,7 @@ int Compy_Rtcp_handle_incoming(
     return 0;
 }
 
-const Compy_RtcpReportBlock *
-Compy_Rtcp_get_last_rr(const Compy_Rtcp *self) {
+const Compy_RtcpReportBlock *Compy_Rtcp_get_last_rr(const Compy_Rtcp *self) {
     assert(self);
     return self->has_rr ? &self->last_rr : NULL;
 }

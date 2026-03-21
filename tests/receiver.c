@@ -24,9 +24,9 @@ static void TestAudioReceiver_on_audio(
     self->last_timestamp = timestamp;
     self->last_ssrc = ssrc;
     self->call_count++;
-    self->last_payload_len =
-        payload.len < sizeof(self->last_payload) ? payload.len
-                                                 : sizeof(self->last_payload);
+    self->last_payload_len = payload.len < sizeof(self->last_payload)
+                                 ? payload.len
+                                 : sizeof(self->last_payload);
     memcpy(self->last_payload, payload.ptr, self->last_payload_len);
 }
 

@@ -5,9 +5,9 @@
 
 #include <arpa/inet.h>
 
-#define RTCP_VERSION 2
-#define RTCP_HEADER_SIZE 4
-#define SR_SENDER_INFO_SIZE 24
+#define RTCP_VERSION         2
+#define RTCP_HEADER_SIZE     4
+#define SR_SENDER_INFO_SIZE  24
 #define RR_REPORT_BLOCK_SIZE 24
 
 static uint8_t *write_u32(uint8_t *p, uint32_t val) {
@@ -35,8 +35,7 @@ static uint16_t read_u16(const uint8_t *p) {
 }
 
 size_t Compy_RtcpSenderReport_serialize(
-    Compy_RtcpSenderInfo info, const char *cname,
-    uint8_t buffer[restrict]) {
+    Compy_RtcpSenderInfo info, const char *cname, uint8_t buffer[restrict]) {
     assert(cname);
     assert(buffer);
 
@@ -85,8 +84,7 @@ size_t Compy_RtcpSenderReport_serialize(
     /* SDES chunk: SSRC(4) + type(1) + length(1) + cname + null terminator,
      * padded to 4-byte boundary */
     const size_t sdes_chunk_size = 4 + 2 + cname_len + 1;
-    const size_t sdes_chunk_padded =
-        (sdes_chunk_size + 3) & ~(size_t)3;
+    const size_t sdes_chunk_padded = (sdes_chunk_size + 3) & ~(size_t)3;
     const size_t sdes_total = RTCP_HEADER_SIZE + sdes_chunk_padded;
 
     /* SDES header: V=2, P=0, SC=1, PT=202 */
