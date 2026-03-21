@@ -11,6 +11,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <unistd.h>
+#ifdef __linux__
+#include <sys/syscall.h>
+#endif
+
 /*
  * Minimal MD5 implementation (RFC 1321).
  * Public domain — derived from the RSA reference implementation.
@@ -33,9 +38,11 @@ static void md5_final(MD5_CTX *ctx, uint8_t digest[16]);
 #define ROT(x, n)  (((x) << (n)) | ((x) >> (32 - (n))))
 
 #define STEP(f, a, b, c, d, x, t, s)                                           \
-    (a) += f((b), (c), (d)) + (x) + (t);                                       \
-    (a) = ROT((a), (s));                                                       \
-    (a) += (b)
+    do {                                                                       \
+        (a) += f((b), (c), (d)) + (x) + (t);                                   \
+        (a) = ROT((a), (s));                                                   \
+        (a) += (b);                                                            \
+    } while (0)
 
 static const uint8_t md5_padding[64] = {0x80};
 
@@ -204,18 +211,40 @@ struct Compy_Auth {
     void *user_data;
 };
 
-static void generate_nonce(char out[NONCE_LEN + 1]) {
-    FILE *f = fopen("/dev/urandom", "r");
-    assert(f);
+static int generate_nonce(char out[NONCE_LEN + 1]) {
     uint8_t raw[NONCE_LEN / 2];
-    size_t n = fread(raw, 1, sizeof raw, f);
-    assert(n == sizeof raw);
-    fclose(f);
 
+#if defined(__linux__) && defined(SYS_getrandom)
+    if (syscall(SYS_getrandom, raw, sizeof raw, 0) == (long)sizeof raw) {
+        goto format;
+    }
+#endif
+
+    FILE *f = fopen("/dev/urandom", "r");
+    if (!f) {
+        return -1;
+    }
+    size_t n = fread(raw, 1, sizeof raw, f);
+    fclose(f);
+    if (n != sizeof raw) {
+        return -1;
+    }
+
+#if defined(__linux__) && defined(SYS_getrandom)
+format:
+#endif
     for (size_t i = 0; i < sizeof raw; i++) {
         sprintf(out + i * 2, "%02x", raw[i]);
     }
     out[NONCE_LEN] = '\0';
+    return 0;
+}
+
+static void explicit_bzero_fallback(void *buf, size_t len) {
+    volatile uint8_t *p = buf;
+    while (len--) {
+        *p++ = 0;
+    }
 }
 
 Compy_Auth *Compy_Auth_new(
@@ -230,7 +259,11 @@ Compy_Auth *Compy_Auth_new(
     self->realm[sizeof(self->realm) - 1] = '\0';
     self->lookup = lookup;
     self->user_data = user_data;
-    generate_nonce(self->nonce);
+
+    if (generate_nonce(self->nonce) != 0) {
+        free(self);
+        return NULL;
+    }
 
     return self;
 }
@@ -381,14 +414,13 @@ int compy_auth_check(
 
     /* Verify nonce matches */
     if (strcmp(nonce, self->nonce) != 0) {
-        /* Stale nonce — regenerate and re-challenge */
-        generate_nonce(self->nonce);
         goto challenge;
     }
 
     /* Look up password */
     char password[256];
     if (!self->lookup(username, password, sizeof password, self->user_data)) {
+        explicit_bzero_fallback(password, sizeof password);
         goto challenge;
     }
 
@@ -405,6 +437,9 @@ int compy_auth_check(
     compy_digest_response(
         expected, username, self->realm, password, nonce, method, uri);
 
+    /* Wipe password from stack immediately */
+    explicit_bzero_fallback(password, sizeof password);
+
     /* Constant-time comparison to prevent timing attacks */
     uint8_t diff = 0;
     for (int i = 0; i < 32; i++) {
@@ -418,6 +453,8 @@ int compy_auth_check(
     return 0;
 
 challenge:
+    /* Fresh nonce on every challenge to prevent replay attacks */
+    generate_nonce(self->nonce);
     compy_header(
         ctx, COMPY_HEADER_WWW_AUTHENTICATE, "Digest realm=\"%s\", nonce=\"%s\"",
         self->realm, self->nonce);
