@@ -3,14 +3,27 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <mbedtls/version.h>
+
 #include <mbedtls/aes.h>
-#include <mbedtls/ctr_drbg.h>
-#include <mbedtls/entropy.h>
 #include <mbedtls/md.h>
 #include <mbedtls/net_sockets.h>
 #include <mbedtls/pk.h>
 #include <mbedtls/ssl.h>
 #include <mbedtls/x509_crt.h>
+
+/*
+ * mbedTLS 4.0 uses PSA Crypto internally for RNG, removing ctr_drbg
+ * and entropy from the public API. Version 3.x requires explicit RNG
+ * setup.
+ */
+#if MBEDTLS_VERSION_NUMBER < 0x04000000
+#include <mbedtls/ctr_drbg.h>
+#include <mbedtls/entropy.h>
+#define COMPY_MBEDTLS_3X
+#else
+#include <psa/crypto.h>
+#endif
 
 /* --- TLS operations --- */
 
@@ -18,8 +31,10 @@ typedef struct {
     mbedtls_ssl_config conf;
     mbedtls_x509_crt cert;
     mbedtls_pk_context pkey;
+#ifdef COMPY_MBEDTLS_3X
     mbedtls_entropy_context entropy;
     mbedtls_ctr_drbg_context ctr_drbg;
+#endif
 } MbedTlsCtx;
 
 typedef struct {
@@ -36,6 +51,8 @@ mbed_ctx_new(const char *cert_path, const char *key_path) {
     mbedtls_ssl_config_init(&self->conf);
     mbedtls_x509_crt_init(&self->cert);
     mbedtls_pk_init(&self->pkey);
+
+#ifdef COMPY_MBEDTLS_3X
     mbedtls_entropy_init(&self->entropy);
     mbedtls_ctr_drbg_init(&self->ctr_drbg);
 
@@ -44,13 +61,21 @@ mbed_ctx_new(const char *cert_path, const char *key_path) {
             (const unsigned char *)"compy", 5) != 0) {
         goto fail;
     }
+#endif
 
     if (mbedtls_x509_crt_parse_file(&self->cert, cert_path) != 0)
         goto fail;
+
+#ifdef COMPY_MBEDTLS_3X
     if (mbedtls_pk_parse_keyfile(
             &self->pkey, key_path, NULL, mbedtls_ctr_drbg_random,
             &self->ctr_drbg) != 0)
         goto fail;
+#else
+    /* mbedTLS 4.x: RNG handled internally by PSA */
+    if (mbedtls_pk_parse_keyfile(&self->pkey, key_path, NULL) != 0)
+        goto fail;
+#endif
 
     if (mbedtls_ssl_config_defaults(
             &self->conf, MBEDTLS_SSL_IS_SERVER, MBEDTLS_SSL_TRANSPORT_STREAM,
@@ -58,7 +83,9 @@ mbed_ctx_new(const char *cert_path, const char *key_path) {
         goto fail;
     }
 
+#ifdef COMPY_MBEDTLS_3X
     mbedtls_ssl_conf_rng(&self->conf, mbedtls_ctr_drbg_random, &self->ctr_drbg);
+#endif
     mbedtls_ssl_conf_ca_chain(&self->conf, self->cert.next, NULL);
     if (mbedtls_ssl_conf_own_cert(&self->conf, &self->cert, &self->pkey) != 0) {
         goto fail;
@@ -70,8 +97,10 @@ fail:
     mbedtls_pk_free(&self->pkey);
     mbedtls_x509_crt_free(&self->cert);
     mbedtls_ssl_config_free(&self->conf);
+#ifdef COMPY_MBEDTLS_3X
     mbedtls_entropy_free(&self->entropy);
     mbedtls_ctr_drbg_free(&self->ctr_drbg);
+#endif
     free(self);
     return NULL;
 }
@@ -82,8 +111,10 @@ static void mbed_ctx_free(Compy_CryptoTlsCtx *ctx) {
         mbedtls_pk_free(&c->pkey);
         mbedtls_x509_crt_free(&c->cert);
         mbedtls_ssl_config_free(&c->conf);
+#ifdef COMPY_MBEDTLS_3X
         mbedtls_entropy_free(&c->entropy);
         mbedtls_ctr_drbg_free(&c->ctr_drbg);
+#endif
         free(c);
     }
 }
@@ -175,6 +206,7 @@ static void mbed_hmac_sha1(
 }
 
 static int mbed_random_bytes(uint8_t *buf, size_t len) {
+#ifdef COMPY_MBEDTLS_3X
     mbedtls_entropy_context entropy;
     mbedtls_ctr_drbg_context ctr_drbg;
     mbedtls_entropy_init(&entropy);
@@ -192,6 +224,10 @@ static int mbed_random_bytes(uint8_t *buf, size_t len) {
     mbedtls_ctr_drbg_free(&ctr_drbg);
     mbedtls_entropy_free(&entropy);
     return ret;
+#else
+    /* mbedTLS 4.x: use PSA random */
+    return psa_generate_random(buf, len) == PSA_SUCCESS ? 0 : -1;
+#endif
 }
 
 /* --- Singletons --- */
