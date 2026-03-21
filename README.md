@@ -25,7 +25,9 @@ A small, portable [RTSP 1.0] server library in C99, designed for embedded IP cam
    - [x] RTP/RTCP over UDP (with `server_port` in Transport response)
    - [x] SDP ([RFC 4566])
    - [x] Digest authentication ([RFC 2617])
-   - [ ] RTSPS / SRTP ([RFC 3711])
+   - [x] RTSPS (RTSP over TLS)
+   - [x] SRTP ([RFC 3711]) — AES-128-CM + HMAC-SHA1-80/32
+   - [x] SRTCP ([RFC 3711] Section 3.4)
  - RTP payload formats:
    - [x] H.264 ([RFC 6184]) — single NAL and FU-A fragmentation
    - [x] H.265 ([RFC 7798]) — single NAL and FU fragmentation
@@ -36,6 +38,14 @@ A small, portable [RTSP 1.0] server library in C99, designed for embedded IP cam
    - [x] RTP header deserialization
    - [x] Unified receiver for incoming RTCP and backchannel RTP
    - [x] `AudioReceiver` callback interface for backchannel audio
+ - TLS backends (compile-time selectable):
+   - [x] OpenSSL / LibreSSL
+   - [x] wolfSSL
+   - [x] mbedTLS (3.6.x and 4.0)
+   - [x] BearSSL (SRTP crypto only; TLS server setup requires additional PEM parsing)
+ - Known limitations:
+   - SRTP/SRTCP decrypt (receive-side) is not implemented — send-only
+   - BearSSL TLS server context is stubbed (SRTP operations work)
 
 [RFC 2326]: https://datatracker.ietf.org/doc/html/rfc2326
 [RFC 2617]: https://datatracker.ietf.org/doc/html/rfc2617
