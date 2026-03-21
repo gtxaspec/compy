@@ -438,6 +438,206 @@ static bool Compy_SrtcpTransport_is_full(VSelf) {
 
 impl(Compy_Transport, Compy_SrtcpTransport);
 
+/* --- SRTP/SRTCP receive-side decryption --- */
+
+struct Compy_SrtpRecvCtx {
+    /* SRTP keys */
+    uint8_t srtp_key[16];
+    uint8_t srtp_salt[14];
+    uint8_t srtp_auth_key[20];
+    /* SRTCP keys */
+    uint8_t srtcp_key[16];
+    uint8_t srtcp_salt[14];
+    uint8_t srtcp_auth_key[20];
+    /* State */
+    uint32_t roc;
+    uint16_t prev_seq;
+    int auth_tag_len;
+};
+
+Compy_SrtpRecvCtx *
+compy_srtp_recv_new(Compy_SrtpSuite suite, const Compy_SrtpKeyMaterial *key) {
+    assert(key);
+
+    Compy_SrtpRecvCtx *self = malloc(sizeof *self);
+    assert(self);
+
+    /* Derive SRTP session keys */
+    srtp_kdf(
+        key->master_key, key->master_salt, LABEL_SRTP_ENCRYPTION,
+        self->srtp_key, 16);
+    srtp_kdf(
+        key->master_key, key->master_salt, LABEL_SRTP_SALT, self->srtp_salt,
+        14);
+    srtp_kdf(
+        key->master_key, key->master_salt, LABEL_SRTP_AUTH, self->srtp_auth_key,
+        20);
+
+    /* Derive SRTCP session keys */
+    srtp_kdf(
+        key->master_key, key->master_salt, LABEL_SRTCP_ENCRYPTION,
+        self->srtcp_key, 16);
+    srtp_kdf(
+        key->master_key, key->master_salt, LABEL_SRTCP_SALT, self->srtcp_salt,
+        14);
+    srtp_kdf(
+        key->master_key, key->master_salt, LABEL_SRTCP_AUTH,
+        self->srtcp_auth_key, 20);
+
+    self->roc = 0;
+    self->prev_seq = 0;
+
+    switch (suite) {
+    case Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80:
+        self->auth_tag_len = SRTP_AUTH_TAG_80;
+        break;
+    case Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_32:
+        self->auth_tag_len = SRTP_AUTH_TAG_32;
+        break;
+    }
+
+    return self;
+}
+
+void compy_srtp_recv_free(Compy_SrtpRecvCtx *ctx) {
+    if (ctx) {
+        volatile uint8_t *p;
+        p = ctx->srtp_key;
+        for (size_t i = 0; i < 16; i++)
+            p[i] = 0;
+        p = ctx->srtp_salt;
+        for (size_t i = 0; i < 14; i++)
+            p[i] = 0;
+        p = ctx->srtp_auth_key;
+        for (size_t i = 0; i < 20; i++)
+            p[i] = 0;
+        p = ctx->srtcp_key;
+        for (size_t i = 0; i < 16; i++)
+            p[i] = 0;
+        p = ctx->srtcp_salt;
+        for (size_t i = 0; i < 14; i++)
+            p[i] = 0;
+        p = ctx->srtcp_auth_key;
+        for (size_t i = 0; i < 20; i++)
+            p[i] = 0;
+        free(ctx);
+    }
+}
+
+int compy_srtp_recv_unprotect(
+    Compy_SrtpRecvCtx *ctx, uint8_t *data, size_t *len) {
+    assert(ctx);
+    assert(data);
+    assert(len);
+
+    if (*len < 12 + (size_t)ctx->auth_tag_len) {
+        return -1;
+    }
+
+    size_t encrypted_len = *len - (size_t)ctx->auth_tag_len;
+
+    /* Extract SSRC and seq */
+    uint32_t ssrc;
+    uint16_t seq;
+    memcpy(&ssrc, data + 8, 4);
+    memcpy(&seq, data + 2, 2);
+    ssrc = ntohl(ssrc);
+    seq = ntohs(seq);
+
+    /* ROC estimation */
+    if (seq < ctx->prev_seq && (ctx->prev_seq - seq) > 0x7FFF) {
+        ctx->roc++;
+    }
+    ctx->prev_seq = seq;
+
+    uint32_t index = ctx->roc * 65536 + seq;
+
+    /* Verify authentication tag */
+    uint8_t auth_input[SRTP_MAX_PACKET_SIZE + 4];
+    memcpy(auth_input, data, encrypted_len);
+    uint32_t roc_be = htonl(ctx->roc);
+    memcpy(auth_input + encrypted_len, &roc_be, 4);
+
+    uint8_t expected_tag[20];
+    compy_crypto_srtp_ops.hmac_sha1(
+        ctx->srtp_auth_key, 20, auth_input, encrypted_len + 4, expected_tag);
+
+    /* Constant-time comparison */
+    uint8_t diff = 0;
+    for (int i = 0; i < ctx->auth_tag_len; i++) {
+        diff |= expected_tag[i] ^ data[encrypted_len + i];
+    }
+    if (diff != 0) {
+        return -1;
+    }
+
+    /* Decrypt payload */
+    uint8_t cc = data[0] & 0x0F;
+    size_t header_len = 12 + (size_t)cc * 4;
+    if (header_len > encrypted_len) {
+        return -1;
+    }
+
+    srtp_encrypt_payload(
+        ctx->srtp_key, ctx->srtp_salt, ssrc, index, data + header_len,
+        encrypted_len - header_len);
+
+    *len = encrypted_len;
+    return 0;
+}
+
+int compy_srtcp_recv_unprotect(
+    Compy_SrtpRecvCtx *ctx, uint8_t *data, size_t *len) {
+    assert(ctx);
+    assert(data);
+    assert(len);
+
+    /* Minimum: 8 (RTCP header) + 4 (SRTCP index) + auth_tag */
+    if (*len < 8 + 4 + (size_t)ctx->auth_tag_len) {
+        return -1;
+    }
+
+    size_t auth_start = *len - (size_t)ctx->auth_tag_len;
+    size_t index_start = auth_start - 4;
+
+    /* Verify authentication tag (covers everything up to but not including
+     * tag) */
+    uint8_t expected_tag[20];
+    compy_crypto_srtp_ops.hmac_sha1(
+        ctx->srtcp_auth_key, 20, data, auth_start, expected_tag);
+
+    uint8_t diff = 0;
+    for (int i = 0; i < ctx->auth_tag_len; i++) {
+        diff |= expected_tag[i] ^ data[auth_start + i];
+    }
+    if (diff != 0) {
+        return -1;
+    }
+
+    /* Extract SRTCP index and E-flag */
+    uint32_t srtcp_index;
+    memcpy(&srtcp_index, data + index_start, 4);
+    srtcp_index = ntohl(srtcp_index);
+    bool encrypted = (srtcp_index & 0x80000000) != 0;
+    srtcp_index &= 0x7FFFFFFF;
+
+    /* Extract SSRC from RTCP header (bytes 4-7) */
+    uint32_t ssrc;
+    memcpy(&ssrc, data + 4, 4);
+    ssrc = ntohl(ssrc);
+
+    /* Decrypt if E-flag is set */
+    if (encrypted) {
+        srtp_encrypt_payload(
+            ctx->srtcp_key, ctx->srtcp_salt, ssrc, srtcp_index, data + 8,
+            index_start - 8);
+    }
+
+    /* Strip SRTCP index and auth tag */
+    *len = index_start;
+    return 0;
+}
+
 /* --- SRTP key management helpers --- */
 
 int compy_srtp_generate_key(Compy_SrtpKeyMaterial *key) {

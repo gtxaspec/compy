@@ -166,6 +166,62 @@ Compy_Transport compy_transport_srtcp(
     const Compy_SrtpKeyMaterial *key) COMPY_PRIV_MUST_USE;
 
 /**
+ * Opaque SRTP/SRTCP receive-side decryption context.
+ */
+typedef struct Compy_SrtpRecvCtx Compy_SrtpRecvCtx;
+
+/**
+ * Creates a new SRTP receive context for decrypting incoming packets.
+ *
+ * Derives both SRTP and SRTCP session keys from the master key material.
+ *
+ * @param[in] suite The SRTP crypto suite.
+ * @param[in] key The keying material (same as used for send).
+ *
+ * @pre `key != NULL`
+ */
+Compy_SrtpRecvCtx *compy_srtp_recv_new(
+    Compy_SrtpSuite suite,
+    const Compy_SrtpKeyMaterial *key) COMPY_PRIV_MUST_USE;
+
+/**
+ * Frees an SRTP receive context.
+ */
+void compy_srtp_recv_free(Compy_SrtpRecvCtx *ctx);
+
+/**
+ * Decrypts and authenticates an incoming SRTP packet in-place.
+ *
+ * Verifies the HMAC authentication tag, strips it, and decrypts the
+ * payload. On success, @p len is updated to the decrypted packet size
+ * (original size minus auth tag).
+ *
+ * @param[in] ctx The SRTP receive context.
+ * @param[in,out] data The SRTP packet (modified in-place).
+ * @param[in,out] len Packet length (reduced on success).
+ *
+ * @return 0 on success, -1 on authentication failure or parse error.
+ */
+int compy_srtp_recv_unprotect(
+    Compy_SrtpRecvCtx *ctx, uint8_t *data, size_t *len) COMPY_PRIV_MUST_USE;
+
+/**
+ * Decrypts and authenticates an incoming SRTCP packet in-place.
+ *
+ * Verifies the HMAC authentication tag, strips the tag and SRTCP index,
+ * and decrypts the payload. On success, @p len is updated to the
+ * decrypted RTCP packet size.
+ *
+ * @param[in] ctx The SRTP receive context.
+ * @param[in,out] data The SRTCP packet (modified in-place).
+ * @param[in,out] len Packet length (reduced on success).
+ *
+ * @return 0 on success, -1 on authentication failure or parse error.
+ */
+int compy_srtcp_recv_unprotect(
+    Compy_SrtpRecvCtx *ctx, uint8_t *data, size_t *len) COMPY_PRIV_MUST_USE;
+
+/**
  * Generates random SRTP master key and salt.
  *
  * @return 0 on success, -1 if CSPRNG fails.
