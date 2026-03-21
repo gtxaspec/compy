@@ -47,7 +47,9 @@ mbed_ctx_new(const char *cert_path, const char *key_path) {
 
     if (mbedtls_x509_crt_parse_file(&self->cert, cert_path) != 0)
         goto fail;
-    if (mbedtls_pk_parse_keyfile(&self->pkey, key_path, NULL) != 0)
+    if (mbedtls_pk_parse_keyfile(
+            &self->pkey, key_path, NULL, mbedtls_ctr_drbg_random,
+            &self->ctr_drbg) != 0)
         goto fail;
 
     if (mbedtls_ssl_config_defaults(

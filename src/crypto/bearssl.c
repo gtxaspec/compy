@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <bearssl.h>
+#include <bearssl/bearssl.h>
 
 /* --- TLS operations --- */
 
