@@ -14,14 +14,8 @@ target_include_directories(server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${LIBEVENT
 set_target_properties(server PROPERTIES C_STANDARD 99 C_STANDARD_REQUIRED ON)
 
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
-  target_compile_options(server PRIVATE -Wall -Wextra -fsanitize=address)
+  target_compile_options(server PRIVATE -Wall -Wextra)
 elseif(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-  target_compile_options(server PRIVATE -Wall -Wextra -fsanitize=address -Wno-misleading-indentation)
+  target_compile_options(server PRIVATE -Wall -Wextra -Wno-misleading-indentation)
 endif()
 
-target_link_options(server PRIVATE -fsanitize=address)
-
-execute_process(COMMAND xxd -i ../media/audio.g711a ../media/audio.g711a.h
-                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-execute_process(COMMAND xxd -i ../media/video.h264 ../media/video.h264.h
-                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

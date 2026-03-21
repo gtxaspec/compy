@@ -34,15 +34,46 @@
 #include <event2/listener.h>
 #include <event2/util.h>
 
-// G.711 A-Law, 8k sample rate, mono channel.
-#include "media/audio.g711a.h"
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 
-// H.264 video with AUDs, 25 FPS.
-#include "media/video.h264.h"
-
-// Comment one of these lines if you do not need audio or video.
 #define ENABLE_AUDIO
 #define ENABLE_VIDEO
+
+/* Media files loaded at startup via mmap */
+static uint8_t *media_video = NULL;
+static size_t media_video_len = 0;
+static uint8_t *media_audio = NULL;
+static size_t media_audio_len = 0;
+static int media_video_fps = 30;
+
+static int mmap_file(const char *path, uint8_t **out, size_t *out_len) {
+    int fd = open(path, O_RDONLY);
+    if (fd == -1) {
+        perror(path);
+        return -1;
+    }
+
+    struct stat st;
+    if (fstat(fd, &st) == -1) {
+        perror("fstat");
+        close(fd);
+        return -1;
+    }
+
+    *out_len = (size_t)st.st_size;
+    *out = mmap(NULL, *out_len, PROT_READ, MAP_PRIVATE, fd, 0);
+    close(fd);
+
+    if (*out == MAP_FAILED) {
+        perror("mmap");
+        *out = NULL;
+        return -1;
+    }
+
+    return 0;
+}
 
 #define SERVER_PORT 8554
 
@@ -54,7 +85,7 @@
 
 #define VIDEO_PAYLOAD_TYPE 96 // dynamic PT
 #define VIDEO_SAMPLE_RATE  90000
-#define VIDEO_FPS          25
+#define VIDEO_FPS          30
 
 #define RTCP_INTERVAL_SEC 5
 
@@ -156,8 +187,53 @@ static Compy_Droppable play_video(
 static void send_video_packet_cb(evutil_socket_t fd, short events, void *arg);
 static bool send_nalu(VideoCtx *ctx);
 
-int main(void) {
+static void print_usage(const char *prog) {
+    fprintf(stderr,
+            "Usage: %s [options]\n"
+            "  -v <file.h264>   H.264 video file (Annex B)\n"
+            "  -a <file.g711a>  G.711 mu-law audio file\n"
+            "  -f <fps>         Video frame rate (default: 30)\n"
+            "  -p <port>        Server port (default: %d)\n",
+            prog, SERVER_PORT);
+}
+
+int main(int argc, char *argv[]) {
     srand(time(NULL));
+
+    const char *video_path = "media/bbb/bbb_sunflower_1080p_30fps_normal.h264";
+    const char *audio_path = "media/bbb/bbb_sunflower_1080p_30fps_normal.g711a";
+    int port = SERVER_PORT;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-v") == 0 && i + 1 < argc) {
+            video_path = argv[++i];
+        } else if (strcmp(argv[i], "-a") == 0 && i + 1 < argc) {
+            audio_path = argv[++i];
+        } else if (strcmp(argv[i], "-f") == 0 && i + 1 < argc) {
+            media_video_fps = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
+            port = atoi(argv[++i]);
+        } else {
+            print_usage(argv[0]);
+            return EXIT_FAILURE;
+        }
+    }
+
+    if (mmap_file(video_path, &media_video, &media_video_len) == -1) {
+        fprintf(stderr, "Failed to load video: %s\n", video_path);
+        return EXIT_FAILURE;
+    }
+
+    if (mmap_file(audio_path, &media_audio, &media_audio_len) == -1) {
+        fprintf(stderr, "Failed to load audio: %s\n", audio_path);
+        return EXIT_FAILURE;
+    }
+
+    printf(
+        "Loaded video: %s (%zu bytes, %d fps)\n"
+        "Loaded audio: %s (%zu bytes)\n",
+        video_path, media_video_len, media_video_fps, audio_path,
+        media_audio_len);
 
     struct event_base *base;
     if ((base = event_base_new()) == NULL) {
@@ -167,7 +243,7 @@ int main(void) {
 
     struct sockaddr_in sin = {
         .sin_family = AF_INET,
-        .sin_port = htons(SERVER_PORT),
+        .sin_port = htons(port),
     };
 
     struct evconnlistener *listener;
@@ -191,7 +267,7 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
-    printf("Server started on port %d.\n", SERVER_PORT);
+    printf("Server started on port %d.\n", port);
 
     event_base_dispatch(base);
 
@@ -337,7 +413,7 @@ Client_describe(VSelf, Compy_Context *ctx, const Compy_Request *req) {
         (COMPY_SDP_ATTR, "recvonly"),
         (COMPY_SDP_ATTR, "rtpmap:%d H264/%" PRIu32, VIDEO_PAYLOAD_TYPE, VIDEO_SAMPLE_RATE),
         (COMPY_SDP_ATTR, "fmtp:%d packetization-mode=1", VIDEO_PAYLOAD_TYPE),
-        (COMPY_SDP_ATTR, "framerate:%d", VIDEO_FPS));
+        (COMPY_SDP_ATTR, "framerate:%d", media_video_fps));
 #endif
 
 #ifdef ENABLE_AUDIO
@@ -750,7 +826,7 @@ static void send_audio_packet_cb(evutil_socket_t fd, short events, void *arg) {
 
     AudioCtx *ctx = arg;
 
-    if (ctx->i * AUDIO_SAMPLES_PER_PACKET >= audio_g711a_len) {
+    if (ctx->i * AUDIO_SAMPLES_PER_PACKET >= media_audio_len) {
         event_del(ctx->ev);
         (*ctx->streams_playing)--;
         if (0 == *ctx->streams_playing) {
@@ -763,13 +839,13 @@ static void send_audio_packet_cb(evutil_socket_t fd, short events, void *arg) {
         Compy_RtpTimestamp_Raw(ctx->i * AUDIO_SAMPLES_PER_PACKET);
     const bool marker = false;
     const size_t samples_count =
-        audio_g711a_len <
+        media_audio_len <
                 ctx->i * AUDIO_SAMPLES_PER_PACKET + AUDIO_SAMPLES_PER_PACKET
-            ? audio_g711a_len % AUDIO_SAMPLES_PER_PACKET
+            ? media_audio_len % AUDIO_SAMPLES_PER_PACKET
             : AUDIO_SAMPLES_PER_PACKET;
     const U8Slice99 header = U8Slice99_empty(),
                     payload = U8Slice99_new(
-                        audio_g711a +
+                        media_audio +
                             ctx->i * AUDIO_SAMPLES_PER_PACKET,
                         samples_count);
 
@@ -794,7 +870,7 @@ impl(Compy_Droppable, VideoCtx);
 static Compy_Droppable play_video(
     struct event_base *base, struct bufferevent *bev, Compy_RtpTransport *t,
     struct event **ev, int *streams_playing) {
-    U8Slice99 video = Slice99_typed_from_array(video_h264);
+    U8Slice99 video = U8Slice99_new(media_video, media_video_len);
 
     Compy_NalStartCodeTester start_code_tester;
     if ((start_code_tester = compy_determine_start_code(video)) == NULL) {
@@ -822,7 +898,7 @@ static Compy_Droppable play_video(
     event_add(
         ctx->ev, &(const struct timeval){
                      .tv_sec = 0,
-                     .tv_usec = 1e6 / VIDEO_FPS,
+                     .tv_usec = 1e6 / media_video_fps,
                  });
     *ev = ctx->ev;
     (*streams_playing)++;
@@ -877,7 +953,7 @@ static bool send_nalu(VideoCtx *ctx) {
 
     if (Compy_NalHeader_unit_type(nalu.header) ==
         COMPY_H264_NAL_UNIT_AUD) {
-        ctx->timestamp += VIDEO_SAMPLE_RATE / VIDEO_FPS;
+        ctx->timestamp += VIDEO_SAMPLE_RATE / media_video_fps;
         au_found = true;
     }
 
