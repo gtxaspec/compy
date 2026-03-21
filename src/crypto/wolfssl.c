@@ -23,7 +23,7 @@ static Compy_CryptoTlsCtx *
 wolf_ctx_new(const char *cert_path, const char *key_path) {
     wolfSSL_Init();
 
-    WOLFSSL_CTX *ctx = wolfSSL_CTX_new(wolfTLSv1_2_server_method());
+    WOLFSSL_CTX *ctx = wolfSSL_CTX_new(wolfSSLv23_server_method());
     if (!ctx)
         return NULL;
 

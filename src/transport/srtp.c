@@ -36,7 +36,8 @@ typedef struct {
     uint8_t session_key[16];
     uint8_t session_salt[14];
     uint8_t auth_key[20];
-    uint32_t roc; /* rollover counter */
+    uint32_t roc;      /* rollover counter */
+    uint16_t prev_seq; /* previous sequence number for ROC tracking */
     int auth_tag_len;
 } Compy_SrtpTransport;
 
@@ -170,6 +171,7 @@ Compy_Transport compy_transport_srtp(
     self->inner = inner;
     self->suite = suite;
     self->roc = 0;
+    self->prev_seq = 0;
 
     switch (suite) {
     case Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80:
@@ -190,10 +192,17 @@ static void Compy_SrtpTransport_drop(VSelf) {
     assert(self);
 
     VCALL_SUPER(self->inner, Compy_Droppable, drop);
-    /* Wipe keys from memory */
-    memset(self->session_key, 0, sizeof self->session_key);
-    memset(self->session_salt, 0, sizeof self->session_salt);
-    memset(self->auth_key, 0, sizeof self->auth_key);
+    /* Wipe keys from memory (volatile to prevent optimizer removal) */
+    volatile uint8_t *p;
+    p = self->session_key;
+    for (size_t i = 0; i < sizeof self->session_key; i++)
+        p[i] = 0;
+    p = self->session_salt;
+    for (size_t i = 0; i < sizeof self->session_salt; i++)
+        p[i] = 0;
+    p = self->auth_key;
+    for (size_t i = 0; i < sizeof self->auth_key; i++)
+        p[i] = 0;
     free(self);
 }
 
@@ -228,6 +237,12 @@ static int Compy_SrtpTransport_transmit(VSelf, Compy_IoVecSlice bufs) {
     memcpy(&seq, packet + 2, 2);
     ssrc = ntohl(ssrc);
     seq = ntohs(seq);
+
+    /* Detect sequence number rollover and increment ROC (RFC 3711 §3.3.1) */
+    if (seq < self->prev_seq && (self->prev_seq - seq) > 0x7FFF) {
+        self->roc++;
+    }
+    self->prev_seq = seq;
 
     /* Packet index = ROC * 65536 + SEQ */
     uint32_t index = self->roc * 65536 + seq;
