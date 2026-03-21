@@ -19,7 +19,7 @@
  * See [Interface99](https://github.com/Hirrolot/interface99) for the macro
  * usage.
  */
-#define Compy_Transport_IFACE                                               \
+#define Compy_Transport_IFACE                                                  \
                                                                                \
     /*                                                                         \
      * Transmits a slice of I/O vectors @p bufs.                               \
@@ -27,7 +27,7 @@
      * @return -1 if an I/O error occurred and sets `errno` appropriately, 0   \
      * on success.                                                             \
      */                                                                        \
-    vfunc99(int, transmit, VSelf99, Compy_IoVecSlice bufs)                  \
+    vfunc99(int, transmit, VSelf99, Compy_IoVecSlice bufs)                     \
     vfunc99(bool, is_full, VSelf99)
 
 /**
@@ -53,8 +53,7 @@ interface99(Compy_Transport);
  * @pre `w.self && w.vptr`
  */
 Compy_Transport compy_transport_tcp(
-    Compy_Writer w, uint8_t channel_id,
-    size_t max_buffer) COMPY_PRIV_MUST_USE;
+    Compy_Writer w, uint8_t channel_id, size_t max_buffer) COMPY_PRIV_MUST_USE;
 
 /**
  * Creates a new UDP transport.
@@ -110,5 +109,79 @@ int compy_recv_dgram_socket(int af, uint16_t port) COMPY_PRIV_MUST_USE;
  *
  * @pre `addr != NULL`
  */
-void *compy_sockaddr_ip(const struct sockaddr *restrict addr)
-    COMPY_PRIV_MUST_USE;
+void *
+compy_sockaddr_ip(const struct sockaddr *restrict addr) COMPY_PRIV_MUST_USE;
+
+#ifdef COMPY_HAS_TLS
+
+/**
+ * SRTP crypto suite.
+ */
+typedef enum {
+    Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80,
+    Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_32,
+} Compy_SrtpSuite;
+
+/**
+ * SRTP keying material (master key + master salt).
+ */
+typedef struct {
+    uint8_t master_key[16];  /**< 128-bit master key. */
+    uint8_t master_salt[14]; /**< 112-bit master salt. */
+} Compy_SrtpKeyMaterial;
+
+/**
+ * Creates a new SRTP transport wrapping a UDP transport.
+ *
+ * Encrypts outgoing RTP packets using AES-128-CM and authenticates
+ * with HMAC-SHA1 per RFC 3711. Ownership of @p inner is transferred.
+ *
+ * @param[in] inner The UDP transport to wrap.
+ * @param[in] suite The SRTP crypto suite.
+ * @param[in] key The keying material (copied).
+ *
+ * @pre `inner.self && inner.vptr`
+ * @pre `key != NULL`
+ */
+Compy_Transport compy_transport_srtp(
+    Compy_Transport inner, Compy_SrtpSuite suite,
+    const Compy_SrtpKeyMaterial *key) COMPY_PRIV_MUST_USE;
+
+/**
+ * Generates random SRTP master key and salt.
+ *
+ * @return 0 on success, -1 if CSPRNG fails.
+ */
+int compy_srtp_generate_key(Compy_SrtpKeyMaterial *key) COMPY_PRIV_MUST_USE;
+
+/**
+ * Formats an SDP `a=crypto:` attribute value.
+ *
+ * Output format: `"<tag> <suite> inline:<base64(key||salt)>"`
+ *
+ * @param[out] buf Output buffer (at least 128 bytes recommended).
+ * @param[in] buf_len Size of @p buf.
+ * @param[in] tag The crypto tag number (usually 1).
+ * @param[in] suite The SRTP crypto suite.
+ * @param[in] key The keying material.
+ *
+ * @return Characters written, or -1 on error.
+ */
+int compy_srtp_format_crypto_attr(
+    char *buf, size_t buf_len, int tag, Compy_SrtpSuite suite,
+    const Compy_SrtpKeyMaterial *key) COMPY_PRIV_MUST_USE;
+
+/**
+ * Parses an SDP `a=crypto:` attribute value.
+ *
+ * @param[in] attr_value The attribute value string.
+ * @param[out] suite The parsed crypto suite.
+ * @param[out] key The parsed keying material.
+ *
+ * @return 0 on success, -1 on parse error.
+ */
+int compy_srtp_parse_crypto_attr(
+    const char *attr_value, Compy_SrtpSuite *suite,
+    Compy_SrtpKeyMaterial *key) COMPY_PRIV_MUST_USE;
+
+#endif /* COMPY_HAS_TLS */

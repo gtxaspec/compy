@@ -9,6 +9,12 @@ endif()
 option(COMPY_SHARED "Build a shared library" OFF)
 option(COMPY_FULL_MACRO_EXPANSION "Show full macro expansion backtraces" OFF)
 
+# TLS backend options (mutually exclusive)
+option(COMPY_TLS_WOLFSSL "Use wolfSSL for TLS/SRTP" OFF)
+option(COMPY_TLS_MBEDTLS "Use mbedTLS for TLS/SRTP" OFF)
+option(COMPY_TLS_OPENSSL "Use OpenSSL for TLS/SRTP" OFF)
+option(COMPY_TLS_BEARSSL "Use BearSSL for TLS/SRTP" OFF)
+
 include(FetchContent)
 
 FetchContent_Declare(
@@ -141,5 +147,48 @@ target_precompile_headers(
 
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 target_link_libraries(${PROJECT_NAME} PUBLIC slice99 metalang99 datatype99 interface99)
+
+# TLS/SRTP support (conditional)
+set(COMPY_TLS_COUNT 0)
+foreach(opt COMPY_TLS_WOLFSSL COMPY_TLS_MBEDTLS COMPY_TLS_OPENSSL COMPY_TLS_BEARSSL)
+  if(${opt})
+    math(EXPR COMPY_TLS_COUNT "${COMPY_TLS_COUNT} + 1")
+  endif()
+endforeach()
+
+if(COMPY_TLS_COUNT GREATER 1)
+  message(FATAL_ERROR "Only one TLS backend may be selected at a time.")
+endif()
+
+if(COMPY_TLS_COUNT EQUAL 1)
+  target_compile_definitions(${PROJECT_NAME} PUBLIC COMPY_HAS_TLS)
+  target_sources(${PROJECT_NAME} PRIVATE
+    src/tls.c
+    src/transport/srtp.c
+    include/compy/tls.h
+    include/compy/priv/crypto.h)
+
+  if(COMPY_TLS_OPENSSL)
+    find_package(OpenSSL REQUIRED)
+    target_sources(${PROJECT_NAME} PRIVATE src/crypto/openssl.c)
+    target_link_libraries(${PROJECT_NAME} PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+  elseif(COMPY_TLS_WOLFSSL)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(WOLFSSL REQUIRED wolfssl)
+    target_sources(${PROJECT_NAME} PRIVATE src/crypto/wolfssl.c)
+    target_include_directories(${PROJECT_NAME} PUBLIC ${WOLFSSL_INCLUDE_DIRS})
+    target_link_libraries(${PROJECT_NAME} PUBLIC ${WOLFSSL_LIBRARIES})
+  elseif(COMPY_TLS_MBEDTLS)
+    find_package(MbedTLS REQUIRED)
+    target_sources(${PROJECT_NAME} PRIVATE src/crypto/mbedtls.c)
+    target_link_libraries(${PROJECT_NAME} PUBLIC mbedtls mbedx509 mbedcrypto)
+  elseif(COMPY_TLS_BEARSSL)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(BEARSSL REQUIRED bearssl)
+    target_sources(${PROJECT_NAME} PRIVATE src/crypto/bearssl.c)
+    target_include_directories(${PROJECT_NAME} PUBLIC ${BEARSSL_INCLUDE_DIRS})
+    target_link_libraries(${PROJECT_NAME} PUBLIC ${BEARSSL_LIBRARIES})
+  endif()
+endif()
 
 set_target_properties(${PROJECT_NAME} PROPERTIES C_STANDARD 99 C_STANDARD_REQUIRED ON)

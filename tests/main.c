@@ -43,5 +43,9 @@ int main(int argc, char *argv[]) {
     COMPY_SUITE(auth);
     COMPY_SUITE(base64);
 
+#ifdef COMPY_HAS_TLS
+    COMPY_SUITE(srtp);
+#endif
+
     GREATEST_MAIN_END();
 }

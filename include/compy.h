@@ -47,3 +47,7 @@
 #include <compy/transport.h>
 #include <compy/util.h>
 #include <compy/writer.h>
+
+#ifdef COMPY_HAS_TLS
+#include <compy/tls.h>
+#endif

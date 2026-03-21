@@ -28,6 +28,11 @@ typedef struct Compy_Context Compy_Context;
 #define COMPY_DEFAULT_PORT 554
 
 /**
+ * The default RTSPS port.
+ */
+#define COMPY_DEFAULT_RTSPS_PORT 322
+
+/**
  * An RTSP lower transport.
  */
 typedef enum {
