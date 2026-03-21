@@ -48,6 +48,16 @@ static uint8_t *media_audio = NULL;
 static size_t media_audio_len = 0;
 static int media_video_fps = 30;
 
+/* Authentication (NULL = disabled) */
+static Compy_Auth *g_auth = NULL;
+
+/* TLS/SRTP globals */
+#ifdef COMPY_HAS_TLS
+static Compy_TlsContext *g_tls_ctx = NULL;
+static bool g_srtp_enabled = false;
+static Compy_SrtpKeyMaterial g_srtp_key;
+#endif
+
 static int mmap_file(const char *path, uint8_t **out, size_t *out_len) {
     int fd = open(path, O_RDONLY);
     if (fd == -1) {
@@ -92,8 +102,8 @@ static int mmap_file(const char *path, uint8_t **out, size_t *out_len) {
 #define BACKCHANNEL_PAYLOAD_TYPE 0 // PCMU
 #define BACKCHANNEL_SAMPLE_RATE  8000
 
-#define AUDIO_STREAM_ID      0
-#define VIDEO_STREAM_ID      1
+#define AUDIO_STREAM_ID       0
+#define VIDEO_STREAM_ID       1
 #define BACKCHANNEL_STREAM_ID 2
 
 #define MAX_STREAMS 3
@@ -121,8 +131,8 @@ static void BackchannelReceiver_on_audio(
 
     self->total_bytes += payload.len;
     printf(
-        "Backchannel: received %zu bytes (PT=%u, total=%zu)\n",
-        payload.len, payload_type, self->total_bytes);
+        "Backchannel: received %zu bytes (PT=%u, total=%zu)\n", payload.len,
+        payload_type, self->total_bytes);
 }
 
 impl(Compy_AudioReceiver, BackchannelReceiver);
@@ -187,14 +197,42 @@ static Compy_Droppable play_video(
 static void send_video_packet_cb(evutil_socket_t fd, short events, void *arg);
 static bool send_nalu(VideoCtx *ctx);
 
+/* Auth credential lookup callback */
+static bool auth_lookup(
+    const char *username, char *password_out, size_t password_max,
+    void *user_data) {
+    const char *expected_creds = user_data; /* "user:pass" */
+    const char *colon = strchr(expected_creds, ':');
+    if (!colon)
+        return false;
+
+    size_t user_len = (size_t)(colon - expected_creds);
+    if (strlen(username) != user_len)
+        return false;
+    if (strncmp(username, expected_creds, user_len) != 0)
+        return false;
+
+    strncpy(password_out, colon + 1, password_max - 1);
+    password_out[password_max - 1] = '\0';
+    return true;
+}
+
 static void print_usage(const char *prog) {
-    fprintf(stderr,
-            "Usage: %s [options]\n"
-            "  -v <file.h264>   H.264 video file (Annex B)\n"
-            "  -a <file.g711a>  G.711 mu-law audio file\n"
-            "  -f <fps>         Video frame rate (default: 30)\n"
-            "  -p <port>        Server port (default: %d)\n",
-            prog, SERVER_PORT);
+    fprintf(
+        stderr,
+        "Usage: %s [options]\n"
+        "  -v <file.h264>   H.264 video file (Annex B)\n"
+        "  -a <file.g711a>  G.711 mu-law audio file\n"
+        "  -f <fps>         Video frame rate (default: 30)\n"
+        "  -p <port>        Server port (default: %d)\n"
+        "  -u <user:pass>   Enable Digest authentication\n"
+#ifdef COMPY_HAS_TLS
+        "  -t <cert.pem>    TLS certificate (enables RTSPS)\n"
+        "  -k <key.pem>     TLS private key\n"
+        "  -s               Enable SRTP/SRTCP encryption\n"
+#endif
+        ,
+        prog, SERVER_PORT);
 }
 
 int main(int argc, char *argv[]) {
@@ -203,6 +241,11 @@ int main(int argc, char *argv[]) {
     const char *video_path = "media/bbb/bbb_sunflower_1080p_30fps_normal.h264";
     const char *audio_path = "media/bbb/bbb_sunflower_1080p_30fps_normal.g711a";
     int port = SERVER_PORT;
+    const char *auth_creds = NULL;
+#ifdef COMPY_HAS_TLS
+    const char *tls_cert = NULL;
+    const char *tls_key = NULL;
+#endif
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-v") == 0 && i + 1 < argc) {
@@ -213,11 +256,55 @@ int main(int argc, char *argv[]) {
             media_video_fps = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
             port = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-u") == 0 && i + 1 < argc) {
+            auth_creds = argv[++i];
+#ifdef COMPY_HAS_TLS
+        } else if (strcmp(argv[i], "-t") == 0 && i + 1 < argc) {
+            tls_cert = argv[++i];
+        } else if (strcmp(argv[i], "-k") == 0 && i + 1 < argc) {
+            tls_key = argv[++i];
+        } else if (strcmp(argv[i], "-s") == 0) {
+            g_srtp_enabled = true;
+#endif
         } else {
             print_usage(argv[0]);
             return EXIT_FAILURE;
         }
     }
+
+    /* Set up authentication */
+    if (auth_creds) {
+        if (!strchr(auth_creds, ':')) {
+            fprintf(stderr, "Auth format: user:pass\n");
+            return EXIT_FAILURE;
+        }
+        g_auth = Compy_Auth_new("Compy", auth_lookup, (void *)auth_creds);
+        printf(
+            "Authentication enabled (user: %.*s)\n",
+            (int)(strchr(auth_creds, ':') - auth_creds), auth_creds);
+    }
+
+#ifdef COMPY_HAS_TLS
+    /* Set up TLS */
+    if (tls_cert && tls_key) {
+        g_tls_ctx = Compy_TlsContext_new(
+            (Compy_TlsConfig){.cert_path = tls_cert, .key_path = tls_key});
+        if (!g_tls_ctx) {
+            fprintf(stderr, "Failed to load TLS cert/key\n");
+            return EXIT_FAILURE;
+        }
+        printf("RTSPS enabled (cert: %s)\n", tls_cert);
+    }
+
+    /* Set up SRTP key material */
+    if (g_srtp_enabled) {
+        if (compy_srtp_generate_key(&g_srtp_key) != 0) {
+            fprintf(stderr, "Failed to generate SRTP key\n");
+            return EXIT_FAILURE;
+        }
+        printf("SRTP/SRTCP enabled (AES-128-CM + HMAC-SHA1-80)\n");
+    }
+#endif
 
     if (mmap_file(video_path, &media_video, &media_video_len) == -1) {
         fprintf(stderr, "Failed to load video: %s\n", video_path);
@@ -274,6 +361,16 @@ int main(int argc, char *argv[]) {
     evconnlistener_free(listener);
     event_free(sigint_handler);
     event_base_free(base);
+
+    if (g_auth) {
+        Compy_Auth_free(g_auth);
+    }
+
+#ifdef COMPY_HAS_TLS
+    if (g_tls_ctx) {
+        Compy_TlsContext_free(g_tls_ctx);
+    }
+#endif
 
     puts("Done.");
     return EXIT_SUCCESS;
@@ -353,8 +450,8 @@ static void Client_drop(VSelf) {
             if (self->streams[i].rtcp_ev) {
                 event_free(self->streams[i].rtcp_ev);
             }
-            VCALL(DYN(Compy_Rtcp, Compy_Droppable, self->streams[i].rtcp),
-                  drop);
+            VCALL(
+                DYN(Compy_Rtcp, Compy_Droppable, self->streams[i].rtcp), drop);
         }
         if (self->streams[i].ctx.vptr != NULL) {
             VCALL(self->streams[i].ctx, drop);
@@ -362,8 +459,7 @@ static void Client_drop(VSelf) {
     }
 
     if (self->backchannel) {
-        VCALL(DYN(Compy_Backchannel, Compy_Droppable, self->backchannel),
-              drop);
+        VCALL(DYN(Compy_Backchannel, Compy_Droppable, self->backchannel), drop);
     }
 
     free(self);
@@ -432,6 +528,18 @@ Client_describe(VSelf, Compy_Context *ctx, const Compy_Request *req) {
             (COMPY_SDP_ATTR, "rtpmap:%d PCMU/%d", BACKCHANNEL_PAYLOAD_TYPE, BACKCHANNEL_SAMPLE_RATE),
             (COMPY_SDP_ATTR, "sendonly"));
     }
+
+#ifdef COMPY_HAS_TLS
+    if (g_srtp_enabled) {
+        char crypto_attr[128];
+        compy_srtp_format_crypto_attr(
+            crypto_attr, sizeof crypto_attr, 1,
+            Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &g_srtp_key);
+        COMPY_SDP_DESCRIBE(
+            ret, sdp,
+            (COMPY_SDP_ATTR, "crypto:%s", crypto_attr));
+    }
+#endif
     // clang-format on
 
     assert(ret > 0);
@@ -442,8 +550,7 @@ Client_describe(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     compy_respond_ok(ctx);
 }
 
-static void
-Client_setup(VSelf, Compy_Context *ctx, const Compy_Request *req) {
+static void Client_setup(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     VSELF(Client);
 
     Compy_Transport transport, rtcp_transport;
@@ -463,15 +570,14 @@ Client_setup(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     }
     Stream *stream = &self->streams[stream_id];
 
-    const bool aggregate_control_requested = Compy_HeaderMap_contains_key(
-        &req->header_map, COMPY_HEADER_SESSION);
+    const bool aggregate_control_requested =
+        Compy_HeaderMap_contains_key(&req->header_map, COMPY_HEADER_SESSION);
     if (aggregate_control_requested) {
         uint64_t session_id;
         if (compy_scanf_header(
                 &req->header_map, COMPY_HEADER_SESSION, "%" SCNu64,
                 &session_id) != 1) {
-            compy_respond(
-                ctx, COMPY_STATUS_BAD_REQUEST, "Malformed `Session'");
+            compy_respond(ctx, COMPY_STATUS_BAD_REQUEST, "Malformed `Session'");
             return;
         }
 
@@ -501,31 +607,28 @@ Client_setup(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     } else if (AUDIO_STREAM_ID == stream_id) {
         stream->transport = Compy_RtpTransport_new(
             transport, AUDIO_PCMU_PAYLOAD_TYPE, AUDIO_SAMPLE_RATE);
-        stream->rtcp = Compy_Rtcp_new(
-            stream->transport, rtcp_transport, "compy@camera");
+        stream->rtcp =
+            Compy_Rtcp_new(stream->transport, rtcp_transport, "compy@camera");
     } else {
         stream->transport = Compy_RtpTransport_new(
             transport, VIDEO_PAYLOAD_TYPE, VIDEO_SAMPLE_RATE);
-        stream->rtcp = Compy_Rtcp_new(
-            stream->transport, rtcp_transport, "compy@camera");
+        stream->rtcp =
+            Compy_Rtcp_new(stream->transport, rtcp_transport, "compy@camera");
     }
 
-    compy_header(
-        ctx, COMPY_HEADER_SESSION, "%" PRIu64, stream->session_id);
+    compy_header(ctx, COMPY_HEADER_SESSION, "%" PRIu64, stream->session_id);
 
     compy_respond_ok(ctx);
 }
 
-static void
-Client_play(VSelf, Compy_Context *ctx, const Compy_Request *req) {
+static void Client_play(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     VSELF(Client);
 
     uint64_t session_id;
     if (compy_scanf_header(
-            &req->header_map, COMPY_HEADER_SESSION, "%" SCNu64,
-            &session_id) != 1) {
-        compy_respond(
-            ctx, COMPY_STATUS_BAD_REQUEST, "Malformed `Session'");
+            &req->header_map, COMPY_HEADER_SESSION, "%" SCNu64, &session_id) !=
+        1) {
+        compy_respond(ctx, COMPY_STATUS_BAD_REQUEST, "Malformed `Session'");
         return;
     }
 
@@ -543,16 +646,15 @@ Client_play(VSelf, Compy_Context *ctx, const Compy_Request *req) {
             }
 
             /* Start RTCP SR timer */
-            if (self->streams[i].rtcp &&
-                self->streams[i].rtcp_ev == NULL) {
+            if (self->streams[i].rtcp && self->streams[i].rtcp_ev == NULL) {
                 self->streams[i].rtcp_ev = event_new(
-                    self->base, -1, EV_PERSIST | EV_TIMEOUT,
-                    send_rtcp_sr_cb, self->streams[i].rtcp);
+                    self->base, -1, EV_PERSIST | EV_TIMEOUT, send_rtcp_sr_cb,
+                    self->streams[i].rtcp);
                 assert(self->streams[i].rtcp_ev);
                 event_add(
                     self->streams[i].rtcp_ev,
-                    &(const struct timeval){
-                        .tv_sec = RTCP_INTERVAL_SEC, .tv_usec = 0});
+                    &(const struct timeval){.tv_sec = RTCP_INTERVAL_SEC,
+                                            .tv_usec = 0});
             }
 
             played = true;
@@ -575,10 +677,9 @@ Client_teardown(VSelf, Compy_Context *ctx, const Compy_Request *req) {
 
     uint64_t session_id;
     if (compy_scanf_header(
-            &req->header_map, COMPY_HEADER_SESSION, "%" SCNu64,
-            &session_id) != 1) {
-        compy_respond(
-            ctx, COMPY_STATUS_BAD_REQUEST, "Malformed `Session'");
+            &req->header_map, COMPY_HEADER_SESSION, "%" SCNu64, &session_id) !=
+        1) {
+        compy_respond(ctx, COMPY_STATUS_BAD_REQUEST, "Malformed `Session'");
         return;
     }
 
@@ -635,18 +736,22 @@ Client_before(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     VSELF(Client);
 
     (void)self;
-    (void)ctx;
 
     printf(
         "%s %s CSeq=%" PRIu32 ".\n",
         CharSlice99_alloca_c_str(req->start_line.method),
         CharSlice99_alloca_c_str(req->start_line.uri), req->cseq);
 
+    /* Digest authentication check */
+    if (g_auth && compy_auth_check(g_auth, ctx, req) != 0) {
+        return Compy_ControlFlow_Break;
+    }
+
     return Compy_ControlFlow_Continue;
 }
 
-static void Client_after(
-    VSelf, ssize_t ret, Compy_Context *ctx, const Compy_Request *req) {
+static void
+Client_after(VSelf, ssize_t ret, Compy_Context *ctx, const Compy_Request *req) {
     VSELF(Client);
 
     (void)self;
@@ -667,15 +772,13 @@ static int setup_transport(
     const bool transport_found = Compy_HeaderMap_find(
         &req->header_map, COMPY_HEADER_TRANSPORT, &transport_val);
     if (!transport_found) {
-        compy_respond(
-            ctx, COMPY_STATUS_BAD_REQUEST, "`Transport' not present");
+        compy_respond(ctx, COMPY_STATUS_BAD_REQUEST, "`Transport' not present");
         return -1;
     }
 
     Compy_TransportConfig config;
     if (compy_parse_transport(&config, transport_val) == -1) {
-        compy_respond(
-            ctx, COMPY_STATUS_BAD_REQUEST, "Malformed `Transport'");
+        compy_respond(ctx, COMPY_STATUS_BAD_REQUEST, "Malformed `Transport'");
         return -1;
     }
 
@@ -688,8 +791,8 @@ static int setup_transport(
         break;
     case Compy_LowerTransport_UDP:
         if (setup_udp(
-                (const struct sockaddr *)&self->addr, ctx, t, rtcp_t,
-                config) == -1) {
+                (const struct sockaddr *)&self->addr, ctx, t, rtcp_t, config) ==
+            -1) {
             compy_respond_internal_error(ctx);
             return -1;
         }
@@ -715,8 +818,7 @@ static int setup_tcp(
         return 0;
     }
 
-    compy_respond(
-        ctx, COMPY_STATUS_BAD_REQUEST, "`interleaved' not found");
+    compy_respond(ctx, COMPY_STATUS_BAD_REQUEST, "`interleaved' not found");
     return -1;
 }
 
@@ -754,8 +856,8 @@ static int setup_udp(
             }
         }
         local_len = sizeof local_addr;
-        if (getsockname(
-                rtcp_fd, (struct sockaddr *)&local_addr, &local_len) == 0) {
+        if (getsockname(rtcp_fd, (struct sockaddr *)&local_addr, &local_len) ==
+            0) {
             if (local_addr.ss_family == AF_INET) {
                 server_rtcp_port =
                     ntohs(((struct sockaddr_in *)&local_addr)->sin_port);
@@ -768,17 +870,25 @@ static int setup_udp(
         *t = compy_transport_udp(fd);
         *rtcp_t = compy_transport_udp(rtcp_fd);
 
+#ifdef COMPY_HAS_TLS
+        if (g_srtp_enabled) {
+            *t = compy_transport_srtp(
+                *t, Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &g_srtp_key);
+            *rtcp_t = compy_transport_srtcp(
+                *rtcp_t, Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &g_srtp_key);
+        }
+#endif
+
         compy_header(
             ctx, COMPY_HEADER_TRANSPORT,
             "RTP/AVP/UDP;unicast;client_port=%" PRIu16 "-%" PRIu16
             ";server_port=%" PRIu16 "-%" PRIu16,
-            client_port->rtp_port, client_port->rtcp_port,
-            server_rtp_port, server_rtcp_port);
+            client_port->rtp_port, client_port->rtcp_port, server_rtp_port,
+            server_rtcp_port);
         return 0;
     }
 
-    compy_respond(
-        ctx, COMPY_STATUS_BAD_REQUEST, "`client_port' not found");
+    compy_respond(ctx, COMPY_STATUS_BAD_REQUEST, "`client_port' not found");
     return -1;
 }
 
@@ -845,8 +955,7 @@ static void send_audio_packet_cb(evutil_socket_t fd, short events, void *arg) {
             : AUDIO_SAMPLES_PER_PACKET;
     const U8Slice99 header = U8Slice99_empty(),
                     payload = U8Slice99_new(
-                        media_audio +
-                            ctx->i * AUDIO_SAMPLES_PER_PACKET,
+                        media_audio + ctx->i * AUDIO_SAMPLES_PER_PACKET,
                         samples_count);
 
     if (Compy_RtpTransport_send_packet(
@@ -944,15 +1053,14 @@ again:
 
 static bool send_nalu(VideoCtx *ctx) {
     const Compy_NalUnit nalu = {
-        .header = Compy_NalHeader_H264(
-            Compy_H264NalHeader_parse(ctx->nalu_start[0])),
+        .header =
+            Compy_NalHeader_H264(Compy_H264NalHeader_parse(ctx->nalu_start[0])),
         .payload = U8Slice99_from_ptrdiff(ctx->nalu_start + 1, ctx->video.ptr),
     };
 
     bool au_found = false;
 
-    if (Compy_NalHeader_unit_type(nalu.header) ==
-        COMPY_H264_NAL_UNIT_AUD) {
+    if (Compy_NalHeader_unit_type(nalu.header) == COMPY_H264_NAL_UNIT_AUD) {
         ctx->timestamp += VIDEO_SAMPLE_RATE / media_video_fps;
         au_found = true;
     }
