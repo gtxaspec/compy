@@ -5,8 +5,6 @@
 
 #include <mbedtls/version.h>
 
-#include <mbedtls/aes.h>
-#include <mbedtls/md.h>
 #include <mbedtls/net_sockets.h>
 #include <mbedtls/pk.h>
 #include <mbedtls/ssl.h>
@@ -18,8 +16,10 @@
  * setup.
  */
 #if MBEDTLS_VERSION_NUMBER < 0x04000000
+#include <mbedtls/aes.h>
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/entropy.h>
+#include <mbedtls/md.h>
 #define COMPY_MBEDTLS_3X
 #else
 #include <psa/crypto.h>
@@ -44,6 +44,11 @@ typedef struct {
 
 static Compy_CryptoTlsCtx *
 mbed_ctx_new(const char *cert_path, const char *key_path) {
+#ifndef COMPY_MBEDTLS_3X
+    /* mbedTLS 4.x: PSA must be initialized before any crypto ops */
+    psa_crypto_init();
+#endif
+
     MbedTlsCtx *self = calloc(1, sizeof *self);
     if (!self)
         return NULL;
@@ -190,19 +195,51 @@ static size_t mbed_pending(Compy_CryptoTlsConn *conn) {
 
 static void
 mbed_aes128_ecb(const uint8_t key[16], const uint8_t in[16], uint8_t out[16]) {
+#ifdef COMPY_MBEDTLS_3X
     mbedtls_aes_context aes;
     mbedtls_aes_init(&aes);
     mbedtls_aes_setkey_enc(&aes, key, 128);
     mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_ENCRYPT, in, out);
     mbedtls_aes_free(&aes);
+#else
+    /* mbedTLS 4.x: use PSA Crypto */
+    psa_key_attributes_t attr = PSA_KEY_ATTRIBUTES_INIT;
+    psa_set_key_type(&attr, PSA_KEY_TYPE_AES);
+    psa_set_key_bits(&attr, 128);
+    psa_set_key_usage_flags(&attr, PSA_KEY_USAGE_ENCRYPT);
+    psa_set_key_algorithm(&attr, PSA_ALG_ECB_NO_PADDING);
+
+    psa_key_id_t kid;
+    psa_import_key(&attr, key, 16, &kid);
+
+    size_t olen;
+    psa_cipher_encrypt(kid, PSA_ALG_ECB_NO_PADDING, in, 16, out, 16, &olen);
+    psa_destroy_key(kid);
+#endif
 }
 
 static void mbed_hmac_sha1(
     const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len,
     uint8_t out[20]) {
+#ifdef COMPY_MBEDTLS_3X
     mbedtls_md_hmac(
         mbedtls_md_info_from_type(MBEDTLS_MD_SHA1), key, key_len, data,
         data_len, out);
+#else
+    /* mbedTLS 4.x: use PSA MAC */
+    psa_key_attributes_t attr = PSA_KEY_ATTRIBUTES_INIT;
+    psa_set_key_type(&attr, PSA_KEY_TYPE_HMAC);
+    psa_set_key_usage_flags(&attr, PSA_KEY_USAGE_SIGN_MESSAGE);
+    psa_set_key_algorithm(&attr, PSA_ALG_HMAC(PSA_ALG_SHA_1));
+
+    psa_key_id_t kid;
+    psa_import_key(&attr, key, key_len, &kid);
+
+    size_t mac_len;
+    psa_mac_compute(
+        kid, PSA_ALG_HMAC(PSA_ALG_SHA_1), data, data_len, out, 20, &mac_len);
+    psa_destroy_key(kid);
+#endif
 }
 
 static int mbed_random_bytes(uint8_t *buf, size_t len) {
@@ -225,7 +262,8 @@ static int mbed_random_bytes(uint8_t *buf, size_t len) {
     mbedtls_entropy_free(&entropy);
     return ret;
 #else
-    /* mbedTLS 4.x: use PSA random */
+    /* mbedTLS 4.x: use PSA random (ensure initialized) */
+    psa_crypto_init();
     return psa_generate_random(buf, len) == PSA_SUCCESS ? 0 : -1;
 #endif
 }
