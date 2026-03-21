@@ -43,6 +43,27 @@ typedef struct {
 
 declImpl(Compy_Transport, Compy_SrtpTransport);
 
+/*
+ * SRTCP transport (RFC 3711 Section 3.4).
+ *
+ * Differs from SRTP:
+ * - Uses SRTCP key derivation labels (0x03/0x04/0x05)
+ * - Appends a 4-byte SRTCP index (E-flag | 31-bit index) after payload
+ * - Auth tag covers header + encrypted payload + SRTCP index
+ * - Index is a monotonic counter, not derived from packet seq
+ */
+typedef struct {
+    Compy_Transport inner;
+    Compy_SrtpSuite suite;
+    uint8_t session_key[16];
+    uint8_t session_salt[14];
+    uint8_t auth_key[20];
+    uint32_t srtcp_index; /* 31-bit counter */
+    int auth_tag_len;
+} Compy_SrtcpTransport;
+
+declImpl(Compy_Transport, Compy_SrtcpTransport);
+
 /* --- Key derivation (RFC 3711 Section 4.3.1) --- */
 
 static void srtp_kdf(
@@ -288,6 +309,134 @@ static bool Compy_SrtpTransport_is_full(VSelf) {
 }
 
 impl(Compy_Transport, Compy_SrtpTransport);
+
+/* --- SRTCP transport implementation (RFC 3711 Section 3.4) --- */
+
+static void srtcp_derive_keys(
+    Compy_SrtcpTransport *self, const Compy_SrtpKeyMaterial *key) {
+    srtp_kdf(
+        key->master_key, key->master_salt, LABEL_SRTCP_ENCRYPTION,
+        self->session_key, 16);
+    srtp_kdf(
+        key->master_key, key->master_salt, LABEL_SRTCP_SALT, self->session_salt,
+        14);
+    srtp_kdf(
+        key->master_key, key->master_salt, LABEL_SRTCP_AUTH, self->auth_key,
+        20);
+}
+
+Compy_Transport compy_transport_srtcp(
+    Compy_Transport inner, Compy_SrtpSuite suite,
+    const Compy_SrtpKeyMaterial *key) {
+    assert(inner.self && inner.vptr);
+    assert(key);
+
+    Compy_SrtcpTransport *self = malloc(sizeof *self);
+    assert(self);
+
+    self->inner = inner;
+    self->suite = suite;
+    self->srtcp_index = 0;
+
+    switch (suite) {
+    case Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80:
+        self->auth_tag_len = SRTP_AUTH_TAG_80;
+        break;
+    case Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_32:
+        self->auth_tag_len = SRTP_AUTH_TAG_32;
+        break;
+    }
+
+    srtcp_derive_keys(self, key);
+
+    return DYN(Compy_SrtcpTransport, Compy_Transport, self);
+}
+
+static void Compy_SrtcpTransport_drop(VSelf) {
+    VSELF(Compy_SrtcpTransport);
+    assert(self);
+
+    VCALL_SUPER(self->inner, Compy_Droppable, drop);
+    volatile uint8_t *p;
+    p = self->session_key;
+    for (size_t i = 0; i < sizeof self->session_key; i++)
+        p[i] = 0;
+    p = self->session_salt;
+    for (size_t i = 0; i < sizeof self->session_salt; i++)
+        p[i] = 0;
+    p = self->auth_key;
+    for (size_t i = 0; i < sizeof self->auth_key; i++)
+        p[i] = 0;
+    free(self);
+}
+
+impl(Compy_Droppable, Compy_SrtcpTransport);
+
+static int Compy_SrtcpTransport_transmit(VSelf, Compy_IoVecSlice bufs) {
+    VSELF(Compy_SrtcpTransport);
+    assert(self);
+
+    /* Coalesce iovecs */
+    size_t total = Compy_IoVecSlice_len(bufs);
+    /* Need room for: packet + SRTCP index (4) + auth tag */
+    if (total + 4 + (size_t)self->auth_tag_len > SRTP_MAX_PACKET_SIZE) {
+        return -1;
+    }
+
+    uint8_t packet[SRTP_MAX_PACKET_SIZE];
+    size_t offset = 0;
+    for (size_t i = 0; i < bufs.len; i++) {
+        memcpy(packet + offset, bufs.ptr[i].iov_base, bufs.ptr[i].iov_len);
+        offset += bufs.ptr[i].iov_len;
+    }
+
+    /* RTCP header is at least 8 bytes (V=2, PT, length, SSRC) */
+    if (total < 8) {
+        return -1;
+    }
+
+    /* Extract SSRC from RTCP header (bytes 4-7) */
+    uint32_t ssrc;
+    memcpy(&ssrc, packet + 4, 4);
+    ssrc = ntohl(ssrc);
+
+    /*
+     * SRTCP encrypts everything after the first 8 bytes (header + SSRC).
+     * The encryption IV uses the SRTCP index instead of ROC+seq.
+     */
+    srtp_encrypt_payload(
+        self->session_key, self->session_salt, ssrc, self->srtcp_index,
+        packet + 8, total - 8);
+
+    /* Append SRTCP index with E-flag (bit 31 = 1 means encrypted) */
+    uint32_t srtcp_index_be = htonl(self->srtcp_index | 0x80000000);
+    memcpy(packet + total, &srtcp_index_be, 4);
+    total += 4;
+
+    /* Auth tag covers: header + encrypted payload + SRTCP index */
+    uint8_t hmac_out[20];
+    compy_crypto_srtp_ops.hmac_sha1(
+        self->auth_key, sizeof self->auth_key, packet, total, hmac_out);
+
+    memcpy(packet + total, hmac_out, (size_t)self->auth_tag_len);
+    total += (size_t)self->auth_tag_len;
+
+    self->srtcp_index++;
+
+    const Compy_IoVecSlice encrypted =
+        (Compy_IoVecSlice)Slice99_typed_from_array((struct iovec[]){
+            {.iov_base = packet, .iov_len = total},
+        });
+
+    return VCALL(self->inner, transmit, encrypted);
+}
+
+static bool Compy_SrtcpTransport_is_full(VSelf) {
+    VSELF(Compy_SrtcpTransport);
+    return VCALL(self->inner, is_full);
+}
+
+impl(Compy_Transport, Compy_SrtcpTransport);
 
 /* --- SRTP key management helpers --- */
 

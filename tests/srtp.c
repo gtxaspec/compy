@@ -218,6 +218,119 @@ TEST srtp_transport_different_keys_different_output(void) {
     PASS();
 }
 
+TEST srtcp_transport_encrypts(void) {
+    int fds[2];
+    ASSERT(socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds) == 0);
+
+    Compy_SrtpKeyMaterial key;
+    ASSERT_EQ(0, compy_srtp_generate_key(&key));
+
+    Compy_Transport udp = compy_transport_udp(fds[0]);
+    Compy_Transport srtcp = compy_transport_srtcp(
+        udp, Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &key);
+
+    /* Build a minimal RTCP SR packet: header(4) + SSRC(4) + sender info(20)
+     * = 28 bytes */
+    uint8_t rtcp_packet[28];
+    memset(rtcp_packet, 0, sizeof rtcp_packet);
+    rtcp_packet[0] = 0x80; /* V=2, P=0, RC=0 */
+    rtcp_packet[1] = 200;  /* PT=SR */
+    rtcp_packet[2] = 0;    /* Length MSB */
+    rtcp_packet[3] = 6;    /* Length LSB (6 32-bit words after header) */
+    /* SSRC */
+    rtcp_packet[4] = 0xDE;
+    rtcp_packet[5] = 0xAD;
+    rtcp_packet[6] = 0xBE;
+    rtcp_packet[7] = 0xEF;
+    /* Sender info: 20 bytes of 0xCC */
+    memset(rtcp_packet + 8, 0xCC, 20);
+
+    struct iovec bufs[] = {
+        {.iov_base = rtcp_packet, .iov_len = sizeof rtcp_packet},
+    };
+    Compy_IoVecSlice slices = Slice99_typed_from_array(bufs);
+
+    int ret = VCALL(srtcp, transmit, slices);
+    ASSERT_EQ(0, ret);
+
+    uint8_t recv_buf[256];
+    ssize_t n = recv(fds[1], recv_buf, sizeof recv_buf, MSG_DONTWAIT);
+    ASSERT(n > 0);
+
+    /* SRTCP packet = original(28) + SRTCP index(4) + auth tag(10) = 42 */
+    ASSERT_EQ(42, (int)n);
+
+    /* First 8 bytes (header + SSRC) should be unencrypted */
+    ASSERT_MEM_EQ(rtcp_packet, recv_buf, 8);
+
+    /* Sender info should be encrypted (different from original) */
+    uint8_t original_info[20];
+    memset(original_info, 0xCC, 20);
+    ASSERT_FALSE(memcmp(recv_buf + 8, original_info, 20) == 0);
+
+    /* SRTCP index should have E-flag set (bit 31) */
+    uint32_t srtcp_idx;
+    memcpy(&srtcp_idx, recv_buf + 28, 4);
+    srtcp_idx = ntohl(srtcp_idx);
+    ASSERT(srtcp_idx & 0x80000000);              /* E-flag set */
+    ASSERT_EQ(0, (int)(srtcp_idx & 0x7FFFFFFF)); /* index = 0 */
+
+    VCALL_SUPER(srtcp, Compy_Droppable, drop);
+    close(fds[1]);
+    PASS();
+}
+
+TEST srtcp_index_increments(void) {
+    int fds[2];
+    ASSERT(socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds) == 0);
+
+    Compy_SrtpKeyMaterial key;
+    ASSERT_EQ(0, compy_srtp_generate_key(&key));
+
+    Compy_Transport udp = compy_transport_udp(fds[0]);
+    Compy_Transport srtcp = compy_transport_srtcp(
+        udp, Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &key);
+
+    uint8_t rtcp_packet[28];
+    memset(rtcp_packet, 0, sizeof rtcp_packet);
+    rtcp_packet[0] = 0x80;
+    rtcp_packet[1] = 200;
+    rtcp_packet[3] = 6;
+    rtcp_packet[4] = 0x12;
+    rtcp_packet[5] = 0x34;
+    rtcp_packet[6] = 0x56;
+    rtcp_packet[7] = 0x78;
+
+    /* Send two packets */
+    for (int pkt = 0; pkt < 2; pkt++) {
+        struct iovec bufs[] = {
+            {.iov_base = rtcp_packet, .iov_len = sizeof rtcp_packet},
+        };
+        Compy_IoVecSlice slices = Slice99_typed_from_array(bufs);
+        int ret __attribute__((unused)) = VCALL(srtcp, transmit, slices);
+    }
+
+    /* Read both and check SRTCP indices */
+    uint8_t buf1[256], buf2[256];
+    ssize_t n1 = recv(fds[1], buf1, sizeof buf1, MSG_DONTWAIT);
+    ssize_t n2 = recv(fds[1], buf2, sizeof buf2, MSG_DONTWAIT);
+    ASSERT(n1 > 0);
+    ASSERT(n2 > 0);
+
+    uint32_t idx1, idx2;
+    memcpy(&idx1, buf1 + 28, 4);
+    memcpy(&idx2, buf2 + 28, 4);
+    idx1 = ntohl(idx1) & 0x7FFFFFFF;
+    idx2 = ntohl(idx2) & 0x7FFFFFFF;
+
+    ASSERT_EQ(0, (int)idx1);
+    ASSERT_EQ(1, (int)idx2);
+
+    VCALL_SUPER(srtcp, Compy_Droppable, drop);
+    close(fds[1]);
+    PASS();
+}
+
 SUITE(srtp) {
     RUN_TEST(srtp_generate_key_nonzero);
     RUN_TEST(srtp_crypto_attr_format);
@@ -226,4 +339,6 @@ SUITE(srtp) {
     RUN_TEST(srtp_crypto_attr_32);
     RUN_TEST(srtp_transport_encrypts);
     RUN_TEST(srtp_transport_different_keys_different_output);
+    RUN_TEST(srtcp_transport_encrypts);
+    RUN_TEST(srtcp_index_increments);
 }

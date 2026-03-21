@@ -148,6 +148,24 @@ Compy_Transport compy_transport_srtp(
     const Compy_SrtpKeyMaterial *key) COMPY_PRIV_MUST_USE;
 
 /**
+ * Creates a new SRTCP transport wrapping a UDP transport.
+ *
+ * Encrypts outgoing RTCP packets per RFC 3711 Section 3.4. Uses
+ * SRTCP-specific key derivation labels and appends the SRTCP index
+ * (with E-flag) before the authentication tag.
+ *
+ * @param[in] inner The UDP transport to wrap (ownership transferred).
+ * @param[in] suite The crypto suite (same as for SRTP).
+ * @param[in] key The keying material (same master key/salt as SRTP).
+ *
+ * @pre `inner.self && inner.vptr`
+ * @pre `key != NULL`
+ */
+Compy_Transport compy_transport_srtcp(
+    Compy_Transport inner, Compy_SrtpSuite suite,
+    const Compy_SrtpKeyMaterial *key) COMPY_PRIV_MUST_USE;
+
+/**
  * Generates random SRTP master key and salt.
  *
  * @return 0 on success, -1 if CSPRNG fails.
