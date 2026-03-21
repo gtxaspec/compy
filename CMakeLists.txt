@@ -97,7 +97,9 @@ set(COMPY_SOURCES
     src/backchannel.c
     src/auth.c
     src/md5.c
+    src/base64.c
     include/compy/priv/md5.h
+    include/compy/priv/base64.h
     src/macros.h
 )
 

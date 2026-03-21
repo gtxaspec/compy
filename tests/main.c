@@ -41,6 +41,7 @@ int main(int argc, char *argv[]) {
     COMPY_SUITE(rtcp);
     COMPY_SUITE(receiver);
     COMPY_SUITE(auth);
+    COMPY_SUITE(base64);
 
     GREATEST_MAIN_END();
 }
