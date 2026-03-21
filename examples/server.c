@@ -58,10 +58,14 @@
 
 #define RTCP_INTERVAL_SEC 5
 
-#define AUDIO_STREAM_ID 0
-#define VIDEO_STREAM_ID 1
+#define BACKCHANNEL_PAYLOAD_TYPE 0 // PCMU
+#define BACKCHANNEL_SAMPLE_RATE  8000
 
-#define MAX_STREAMS 2
+#define AUDIO_STREAM_ID      0
+#define VIDEO_STREAM_ID      1
+#define BACKCHANNEL_STREAM_ID 2
+
+#define MAX_STREAMS 3
 
 typedef struct {
     uint64_t session_id;
@@ -72,6 +76,26 @@ typedef struct {
     Compy_Droppable ctx;
 } Stream;
 
+/* Backchannel audio receiver — logs received audio for demonstration */
+typedef struct {
+    size_t total_bytes;
+} BackchannelReceiver;
+
+static void BackchannelReceiver_on_audio(
+    VSelf, uint8_t payload_type, uint32_t timestamp, uint32_t ssrc,
+    U8Slice99 payload) {
+    VSELF(BackchannelReceiver);
+    (void)timestamp;
+    (void)ssrc;
+
+    self->total_bytes += payload.len;
+    printf(
+        "Backchannel: received %zu bytes (PT=%u, total=%zu)\n",
+        payload.len, payload_type, self->total_bytes);
+}
+
+impl(Compy_AudioReceiver, BackchannelReceiver);
+
 typedef struct {
     struct event_base *base;
     struct bufferevent *bev;
@@ -79,6 +103,9 @@ typedef struct {
     size_t addr_len;
     Stream streams[MAX_STREAMS];
     int streams_playing;
+    bool backchannel_supported;
+    Compy_Backchannel *backchannel;
+    BackchannelReceiver backchannel_recv;
 } Client;
 
 declImpl(Compy_Controller, Client);
@@ -258,6 +285,11 @@ static void Client_drop(VSelf) {
         }
     }
 
+    if (self->backchannel) {
+        VCALL(DYN(Compy_Backchannel, Compy_Droppable, self->backchannel),
+              drop);
+    }
+
     free(self);
 }
 
@@ -280,10 +312,11 @@ static void
 Client_describe(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     VSELF(Client);
 
-    (void)self;
-    (void)req;
+    /* Check if client requests backchannel via ONVIF Require tag */
+    self->backchannel_supported = compy_require_has_tag(
+        &req->header_map, COMPY_REQUIRE_ONVIF_BACKCHANNEL);
 
-    char sdp_buf[1024] = {0};
+    char sdp_buf[2048] = {0};
     Compy_Writer sdp = compy_string_writer(sdp_buf);
     ssize_t ret = 0;
 
@@ -296,22 +329,33 @@ Client_describe(VSelf, Compy_Context *ctx, const Compy_Request *req) {
         (COMPY_SDP_CONNECTION, "IN IP4 0.0.0.0"),
         (COMPY_SDP_TIME, "0 0"));
 
-#ifdef ENABLE_AUDIO
-    COMPY_SDP_DESCRIBE(
-        ret, sdp,
-        (COMPY_SDP_MEDIA, "audio 0 RTP/AVP %d", AUDIO_PCMU_PAYLOAD_TYPE),
-        (COMPY_SDP_ATTR, "control:audio"));
-#endif
-
 #ifdef ENABLE_VIDEO
     COMPY_SDP_DESCRIBE(
         ret, sdp,
         (COMPY_SDP_MEDIA, "video 0 RTP/AVP %d", VIDEO_PAYLOAD_TYPE),
         (COMPY_SDP_ATTR, "control:video"),
+        (COMPY_SDP_ATTR, "recvonly"),
         (COMPY_SDP_ATTR, "rtpmap:%d H264/%" PRIu32, VIDEO_PAYLOAD_TYPE, VIDEO_SAMPLE_RATE),
         (COMPY_SDP_ATTR, "fmtp:%d packetization-mode=1", VIDEO_PAYLOAD_TYPE),
         (COMPY_SDP_ATTR, "framerate:%d", VIDEO_FPS));
 #endif
+
+#ifdef ENABLE_AUDIO
+    COMPY_SDP_DESCRIBE(
+        ret, sdp,
+        (COMPY_SDP_MEDIA, "audio 0 RTP/AVP %d", AUDIO_PCMU_PAYLOAD_TYPE),
+        (COMPY_SDP_ATTR, "control:audio"),
+        (COMPY_SDP_ATTR, "recvonly"));
+#endif
+
+    if (self->backchannel_supported) {
+        COMPY_SDP_DESCRIBE(
+            ret, sdp,
+            (COMPY_SDP_MEDIA, "audio 0 RTP/AVP %d", BACKCHANNEL_PAYLOAD_TYPE),
+            (COMPY_SDP_ATTR, "control:audioback"),
+            (COMPY_SDP_ATTR, "rtpmap:%d PCMU/%d", BACKCHANNEL_PAYLOAD_TYPE, BACKCHANNEL_SAMPLE_RATE),
+            (COMPY_SDP_ATTR, "sendonly"));
+    }
     // clang-format on
 
     assert(ret > 0);
@@ -331,11 +375,16 @@ Client_setup(VSelf, Compy_Context *ctx, const Compy_Request *req) {
         return;
     }
 
-    const size_t stream_id =
-        CharSlice99_primitive_ends_with(
-            req->start_line.uri, CharSlice99_from_str("/audio"))
-            ? AUDIO_STREAM_ID
-            : VIDEO_STREAM_ID;
+    size_t stream_id;
+    if (CharSlice99_primitive_ends_with(
+            req->start_line.uri, CharSlice99_from_str("/audioback"))) {
+        stream_id = BACKCHANNEL_STREAM_ID;
+    } else if (CharSlice99_primitive_ends_with(
+                   req->start_line.uri, CharSlice99_from_str("/audio"))) {
+        stream_id = AUDIO_STREAM_ID;
+    } else {
+        stream_id = VIDEO_STREAM_ID;
+    }
     Stream *stream = &self->streams[stream_id];
 
     const bool aggregate_control_requested = Compy_HeaderMap_contains_key(
@@ -362,16 +411,28 @@ Client_setup(VSelf, Compy_Context *ctx, const Compy_Request *req) {
         }
     }
 
-    if (AUDIO_STREAM_ID == stream_id) {
+    if (BACKCHANNEL_STREAM_ID == stream_id) {
+        /* Backchannel: no outbound RTP transport needed, create receiver */
+        stream->transport = NULL;
+        self->backchannel_recv = (BackchannelReceiver){.total_bytes = 0};
+        self->backchannel = Compy_Backchannel_new(
+            Compy_BackchannelConfig_default(),
+            DYN(BackchannelReceiver, Compy_AudioReceiver,
+                &self->backchannel_recv));
+        /* RTCP transport not used for backchannel in this example */
+        VCALL_SUPER(rtcp_transport, Compy_Droppable, drop);
+        VCALL_SUPER(transport, Compy_Droppable, drop);
+    } else if (AUDIO_STREAM_ID == stream_id) {
         stream->transport = Compy_RtpTransport_new(
             transport, AUDIO_PCMU_PAYLOAD_TYPE, AUDIO_SAMPLE_RATE);
+        stream->rtcp = Compy_Rtcp_new(
+            stream->transport, rtcp_transport, "compy@camera");
     } else {
         stream->transport = Compy_RtpTransport_new(
             transport, VIDEO_PAYLOAD_TYPE, VIDEO_SAMPLE_RATE);
+        stream->rtcp = Compy_Rtcp_new(
+            stream->transport, rtcp_transport, "compy@camera");
     }
-
-    stream->rtcp = Compy_Rtcp_new(
-        stream->transport, rtcp_transport, "compy@camera");
 
     compy_header(
         ctx, COMPY_HEADER_SESSION, "%" PRIu64, stream->session_id);

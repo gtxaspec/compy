@@ -1,5 +1,9 @@
 #include <compy/util.h>
 
+#include <compy/context.h>
+#include <compy/types/header.h>
+#include <compy/types/header_map.h>
+
 #include <assert.h>
 #include <inttypes.h>
 #include <stdbool.h>
@@ -165,4 +169,26 @@ void compy_parse_interleaved_header(
     *channel_id = data[1];
     memcpy(payload_len, data + 2, sizeof *payload_len);
     *payload_len = ntohs(*payload_len);
+}
+
+bool compy_require_has_tag(
+    const Compy_HeaderMap *restrict headers, CharSlice99 tag) {
+    assert(headers);
+
+    CharSlice99 value;
+    if (!Compy_HeaderMap_find(headers, COMPY_HEADER_REQUIRE, &value)) {
+        return false;
+    }
+
+    return CharSlice99_primitive_eq(value, tag);
+}
+
+void compy_respond_option_not_supported(
+    Compy_Context *ctx, CharSlice99 tag) {
+    assert(ctx);
+
+    compy_header(
+        ctx, COMPY_HEADER_UNSUPPORTED, "%.*s", (int)tag.len, tag.ptr);
+    compy_respond(
+        ctx, COMPY_STATUS_OPTION_NOT_SUPPORTED, "Option not supported");
 }

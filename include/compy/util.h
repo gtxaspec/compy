@@ -7,10 +7,15 @@
 
 #include <compy/option.h>
 #include <compy/types/error.h>
+#include <compy/types/header_map.h>
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include <slice99.h>
+
+/* Forward declaration to avoid circular include with context.h */
+typedef struct Compy_Context Compy_Context;
 
 /**
  * Carriage-return + new-line represented as a data slice.
@@ -139,6 +144,48 @@ typedef struct {
 int compy_parse_transport(
     Compy_TransportConfig *restrict config,
     CharSlice99 header_value) COMPY_PRIV_MUST_USE;
+
+/**
+ * The ONVIF backchannel feature tag.
+ *
+ * @see <https://www.onvif.org/specs/stream/ONVIF-Streaming-Spec.pdf> Section
+ * 5.3.1
+ */
+#define COMPY_REQUIRE_ONVIF_BACKCHANNEL                                        \
+    (CharSlice99_from_str("www.onvif.org/ver20/backchannel"))
+
+/**
+ * Checks whether a `Require` header is present in @p headers and contains
+ * the feature tag @p tag.
+ *
+ * The `Require` header value is compared as a whole against @p tag (not
+ * comma-separated). For multiple tags, check each separately.
+ *
+ * @param[in] headers The request header map.
+ * @param[in] tag The feature tag to look for.
+ *
+ * @return `true` if the `Require` header is present and matches @p tag.
+ *
+ * @pre `headers != NULL`
+ */
+bool compy_require_has_tag(
+    const Compy_HeaderMap *restrict headers,
+    CharSlice99 tag) COMPY_PRIV_MUST_USE;
+
+/**
+ * Responds with `551 Option not supported` and an `Unsupported` header
+ * listing @p tag.
+ *
+ * Use this when a request contains a `Require` header with a feature tag
+ * the server does not understand, per RFC 2326 Section 12.32.
+ *
+ * @param[in] ctx The request context.
+ * @param[in] tag The unsupported feature tag value.
+ *
+ * @pre `ctx != NULL`
+ */
+void compy_respond_option_not_supported(
+    Compy_Context *ctx, CharSlice99 tag);
 
 /**
  * Returns a four-octet interleaved binary data header.
