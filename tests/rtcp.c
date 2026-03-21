@@ -137,8 +137,46 @@ TEST rtcp_handle_rr(void) {
     PASS();
 }
 
+TEST rtp_stats_tracking(void) {
+    int fds[2];
+    ASSERT(socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds) == 0);
+
+    srand(42);
+    Compy_Transport t = compy_transport_udp(fds[0]);
+    Compy_RtpTransport *rtp = Compy_RtpTransport_new(t, 96, 90000);
+
+    ASSERT_EQ(0, Compy_RtpTransport_get_packet_count(rtp));
+    ASSERT_EQ(0, Compy_RtpTransport_get_octet_count(rtp));
+    ASSERT(Compy_RtpTransport_get_ssrc(rtp) != 0);
+
+    /* Send a packet with 10-byte payload */
+    uint8_t payload[10] = {0};
+    int ret __attribute__((unused)) = Compy_RtpTransport_send_packet(
+        rtp, Compy_RtpTimestamp_Raw(100), false, U8Slice99_empty(),
+        U8Slice99_new(payload, sizeof payload));
+
+    ASSERT_EQ(1, Compy_RtpTransport_get_packet_count(rtp));
+    ASSERT_EQ(10, Compy_RtpTransport_get_octet_count(rtp));
+    ASSERT_EQ(100, Compy_RtpTransport_get_last_rtp_timestamp(rtp));
+
+    /* Send another with 20-byte payload */
+    uint8_t payload2[20] = {0};
+    ret = Compy_RtpTransport_send_packet(
+        rtp, Compy_RtpTimestamp_Raw(200), true, U8Slice99_empty(),
+        U8Slice99_new(payload2, sizeof payload2));
+
+    ASSERT_EQ(2, Compy_RtpTransport_get_packet_count(rtp));
+    ASSERT_EQ(30, Compy_RtpTransport_get_octet_count(rtp));
+    ASSERT_EQ(200, Compy_RtpTransport_get_last_rtp_timestamp(rtp));
+
+    VCALL(DYN(Compy_RtpTransport, Compy_Droppable, rtp), drop);
+    close(fds[1]);
+    PASS();
+}
+
 SUITE(rtcp) {
     RUN_TEST(rtcp_send_sr);
     RUN_TEST(rtcp_send_bye);
     RUN_TEST(rtcp_handle_rr);
+    RUN_TEST(rtp_stats_tracking);
 }

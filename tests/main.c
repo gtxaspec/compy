@@ -45,6 +45,7 @@ int main(int argc, char *argv[]) {
 
 #ifdef COMPY_HAS_TLS
     COMPY_SUITE(srtp);
+    COMPY_SUITE(tls);
 #endif
 
     GREATEST_MAIN_END();

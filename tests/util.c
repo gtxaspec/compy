@@ -1,7 +1,15 @@
+#include <compy/context.h>
+#include <compy/transport.h>
 #include <compy/util.h>
+#include <compy/writer.h>
 
 #include <inttypes.h>
 #include <stdint.h>
+#include <string.h>
+
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 #include <greatest.h>
 
@@ -188,6 +196,36 @@ TEST require_has_tag_wrong(void) {
     PASS();
 }
 
+TEST respond_option_not_supported(void) {
+    char buf[512] = {0};
+    Compy_Writer w = compy_string_writer(buf);
+    Compy_Context *ctx = Compy_Context_new(w, 1);
+
+    compy_respond_option_not_supported(
+        ctx, CharSlice99_from_str("www.example.org/feature"));
+
+    ASSERT(strstr(buf, "551") != NULL);
+    ASSERT(strstr(buf, "Unsupported") != NULL);
+    ASSERT(strstr(buf, "www.example.org/feature") != NULL);
+
+    VTABLE(Compy_Context, Compy_Droppable).drop(ctx);
+    PASS();
+}
+
+TEST recv_dgram_socket_binds(void) {
+    int fd = compy_recv_dgram_socket(AF_INET, 0); /* port 0 = ephemeral */
+    ASSERT(fd >= 0);
+
+    /* Verify it's bound */
+    struct sockaddr_in addr;
+    socklen_t len = sizeof addr;
+    ASSERT_EQ(0, getsockname(fd, (struct sockaddr *)&addr, &len));
+    ASSERT(ntohs(addr.sin_port) > 0);
+
+    close(fd);
+    PASS();
+}
+
 SUITE(util) {
     RUN_TEST(parse_transport_config);
     RUN_TEST(parse_transport_minimal);
@@ -199,4 +237,6 @@ SUITE(util) {
     RUN_TEST(require_has_tag_present);
     RUN_TEST(require_has_tag_missing);
     RUN_TEST(require_has_tag_wrong);
+    RUN_TEST(respond_option_not_supported);
+    RUN_TEST(recv_dgram_socket_binds);
 }

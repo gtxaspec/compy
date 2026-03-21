@@ -534,6 +534,55 @@ TEST srtp_replay_rejected(void) {
     PASS();
 }
 
+TEST srtp_32_encrypt_decrypt(void) {
+    int fds[2];
+    ASSERT(socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds) == 0);
+
+    Compy_SrtpKeyMaterial key;
+    ASSERT_EQ(0, compy_srtp_generate_key(&key));
+
+    Compy_Transport udp = compy_transport_udp(fds[0]);
+    Compy_Transport srtp = compy_transport_srtp(
+        udp, Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_32, &key);
+
+    Compy_SrtpRecvCtx *recv_ctx =
+        compy_srtp_recv_new(Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_32, &key);
+
+    uint8_t rtp_packet[32];
+    memset(rtp_packet, 0, sizeof rtp_packet);
+    rtp_packet[0] = 0x80;
+    rtp_packet[1] = 96;
+    rtp_packet[3] = 1;
+    rtp_packet[8] = 0x11;
+    rtp_packet[9] = 0x22;
+    rtp_packet[10] = 0x33;
+    rtp_packet[11] = 0x44;
+    memset(rtp_packet + 12, 0x99, 20);
+
+    struct iovec bufs[] = {
+        {.iov_base = rtp_packet, .iov_len = sizeof rtp_packet},
+    };
+    Compy_IoVecSlice slices = Slice99_typed_from_array(bufs);
+    int ret __attribute__((unused)) = VCALL(srtp, transmit, slices);
+
+    uint8_t encrypted[256];
+    ssize_t n = recv(fds[1], encrypted, sizeof encrypted, MSG_DONTWAIT);
+    ASSERT(n > 0);
+
+    /* HMAC-SHA1-32 uses 4-byte tag instead of 10 */
+    ASSERT_EQ((ssize_t)(sizeof rtp_packet + 4), n);
+
+    size_t dec_len = (size_t)n;
+    ASSERT_EQ(0, compy_srtp_recv_unprotect(recv_ctx, encrypted, &dec_len));
+    ASSERT_EQ(sizeof rtp_packet, dec_len);
+    ASSERT_MEM_EQ(rtp_packet, encrypted, sizeof rtp_packet);
+
+    compy_srtp_recv_free(recv_ctx);
+    VCALL_SUPER(srtp, Compy_Droppable, drop);
+    close(fds[1]);
+    PASS();
+}
+
 SUITE(srtp) {
     RUN_TEST(srtp_generate_key_nonzero);
     RUN_TEST(srtp_crypto_attr_format);
@@ -548,4 +597,5 @@ SUITE(srtp) {
     RUN_TEST(srtp_decrypt_bad_auth_fails);
     RUN_TEST(srtcp_encrypt_decrypt_roundtrip);
     RUN_TEST(srtp_replay_rejected);
+    RUN_TEST(srtp_32_encrypt_decrypt);
 }
