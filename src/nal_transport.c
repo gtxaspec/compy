@@ -96,6 +96,13 @@ int Compy_NalTransport_send_packet(
 static int send_fragmentized_nal_data(
     Compy_RtpTransport *t, Compy_RtpTimestamp ts, size_t max_packet_size,
     Compy_NalUnit nalu) {
+    // Account for the FU header overhead so each fragment's total RTP payload
+    // (FU header + fragment data) stays within max_packet_size.
+    const size_t fu_overhead = Compy_NalHeader_fu_size(nalu.header);
+    if (max_packet_size > fu_overhead) {
+        max_packet_size -= fu_overhead;
+    }
+
     const size_t rem = nalu.payload.len % max_packet_size,
                  packets_count = (nalu.payload.len - rem) / max_packet_size;
 
