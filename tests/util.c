@@ -45,24 +45,21 @@ TEST parse_transport_minimal(void) {
     do {                                                                       \
         ASSERT(!config.unicast);                                               \
         ASSERT(!config.multicast);                                             \
-        ASSERT(MATCHES(config.interleaved, Compy_ChannelPair_None));        \
-        ASSERT(MATCHES(config.client_port, Compy_PortPair_None));           \
+        ASSERT(MATCHES(config.interleaved, Compy_ChannelPair_None));           \
+        ASSERT(MATCHES(config.client_port, Compy_PortPair_None));              \
     } while (0)
 
-    int ret =
-        compy_parse_transport(&config, CharSlice99_from_str("RTP/AVP"));
+    int ret = compy_parse_transport(&config, CharSlice99_from_str("RTP/AVP"));
     ASSERT_EQ(0, ret);
     ASSERT_EQ(Compy_LowerTransport_UDP, config.lower);
     CHECK_REST;
 
-    ret =
-        compy_parse_transport(&config, CharSlice99_from_str("RTP/AVP/TCP"));
+    ret = compy_parse_transport(&config, CharSlice99_from_str("RTP/AVP/TCP"));
     ASSERT_EQ(0, ret);
     ASSERT_EQ(Compy_LowerTransport_TCP, config.lower);
     CHECK_REST;
 
-    ret =
-        compy_parse_transport(&config, CharSlice99_from_str("RTP/AVP/UDP"));
+    ret = compy_parse_transport(&config, CharSlice99_from_str("RTP/AVP/UDP"));
     ASSERT_EQ(0, ret);
     ASSERT_EQ(Compy_LowerTransport_UDP, config.lower);
     CHECK_REST;
@@ -108,8 +105,7 @@ TEST interleaved_header(void) {
     uint8_t channel_id = 123;
     uint16_t payload_len = 54321;
 
-    const uint32_t binary =
-        compy_interleaved_header(channel_id, payload_len);
+    const uint32_t binary = compy_interleaved_header(channel_id, payload_len);
 
     ASSERT_EQ(0xd4317b24, binary);
 
@@ -129,10 +125,78 @@ TEST parse_interleaved_header(void) {
     PASS();
 }
 
+TEST parse_transport_server_port(void) {
+    Compy_TransportConfig config;
+    memset(&config, '\0', sizeof config);
+
+    int ret = compy_parse_transport(
+        &config,
+        CharSlice99_from_str("RTP/AVP/UDP;unicast;client_port=3056-3057;"
+                             "server_port=6256-6257"));
+    ASSERT_EQ(0, ret);
+
+    match(config.server_port) {
+        of(Compy_PortPair_Some, val) {
+            ASSERT_EQ(6256, val->rtp_port);
+            ASSERT_EQ(6257, val->rtcp_port);
+        }
+        otherwise FAIL();
+    }
+
+    PASS();
+}
+
+TEST parse_transport_no_server_port(void) {
+    Compy_TransportConfig config;
+    memset(&config, '\0', sizeof config);
+
+    int ret = compy_parse_transport(
+        &config,
+        CharSlice99_from_str("RTP/AVP/UDP;unicast;client_port=3056-3057"));
+    ASSERT_EQ(0, ret);
+
+    ASSERT(MATCHES(config.server_port, Compy_PortPair_None));
+
+    PASS();
+}
+
+TEST require_has_tag_present(void) {
+    Compy_HeaderMap map = Compy_HeaderMap_empty();
+    Compy_HeaderMap_append(
+        &map, (Compy_Header){
+                  COMPY_HEADER_REQUIRE,
+                  CharSlice99_from_str("www.onvif.org/ver20/backchannel")});
+
+    ASSERT(compy_require_has_tag(&map, COMPY_REQUIRE_ONVIF_BACKCHANNEL));
+    PASS();
+}
+
+TEST require_has_tag_missing(void) {
+    Compy_HeaderMap map = Compy_HeaderMap_empty();
+
+    ASSERT_FALSE(compy_require_has_tag(&map, COMPY_REQUIRE_ONVIF_BACKCHANNEL));
+    PASS();
+}
+
+TEST require_has_tag_wrong(void) {
+    Compy_HeaderMap map = Compy_HeaderMap_empty();
+    Compy_HeaderMap_append(
+        &map, (Compy_Header){COMPY_HEADER_REQUIRE,
+                             CharSlice99_from_str("some.other.feature")});
+
+    ASSERT_FALSE(compy_require_has_tag(&map, COMPY_REQUIRE_ONVIF_BACKCHANNEL));
+    PASS();
+}
+
 SUITE(util) {
     RUN_TEST(parse_transport_config);
     RUN_TEST(parse_transport_minimal);
     RUN_TEST(parse_transport_trailing_semicolon);
     RUN_TEST(interleaved_header);
     RUN_TEST(parse_interleaved_header);
+    RUN_TEST(parse_transport_server_port);
+    RUN_TEST(parse_transport_no_server_port);
+    RUN_TEST(require_has_tag_present);
+    RUN_TEST(require_has_tag_missing);
+    RUN_TEST(require_has_tag_wrong);
 }

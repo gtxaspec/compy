@@ -1,3 +1,4 @@
+#include <compy/backchannel.h>
 #include <compy/receiver.h>
 #include <compy/types/rtp.h>
 
@@ -175,10 +176,46 @@ TEST rtp_header_roundtrip(void) {
     PASS();
 }
 
+TEST backchannel_lifecycle(void) {
+    TestAudioReceiver test_recv = {0};
+    Compy_AudioReceiver audio =
+        DYN(TestAudioReceiver, Compy_AudioReceiver, &test_recv);
+
+    Compy_BackchannelConfig cfg = Compy_BackchannelConfig_default();
+    ASSERT_EQ(0, cfg.payload_type);
+    ASSERT_EQ(8000, cfg.clock_rate);
+
+    Compy_Backchannel *bc = Compy_Backchannel_new(cfg, audio);
+    ASSERT(bc != NULL);
+
+    Compy_BackchannelConfig got = Compy_Backchannel_get_config(bc);
+    ASSERT_EQ(cfg.payload_type, got.payload_type);
+    ASSERT_EQ(cfg.clock_rate, got.clock_rate);
+
+    Compy_RtpReceiver *recv = Compy_Backchannel_get_receiver(bc);
+    ASSERT(recv != NULL);
+
+    /* Feed audio through the backchannel receiver */
+    const uint8_t audio_data[] = {0xAA, 0xBB};
+    uint8_t packet[256];
+    size_t packet_len;
+    build_rtp_packet(packet, &packet_len, 0, 160, 42, audio_data, 2);
+
+    int ret =
+        Compy_RtpReceiver_feed(recv, COMPY_CHANNEL_RTP, packet, packet_len);
+    ASSERT_EQ(0, ret);
+    ASSERT_EQ(1, test_recv.call_count);
+    ASSERT_EQ(0, test_recv.last_payload_type);
+
+    VCALL(DYN(Compy_Backchannel, Compy_Droppable, bc), drop);
+    PASS();
+}
+
 SUITE(receiver) {
     RUN_TEST(receiver_feed_audio);
     RUN_TEST(receiver_feed_rtp_too_short);
     RUN_TEST(receiver_feed_no_audio_receiver);
     RUN_TEST(receiver_feed_invalid_channel);
     RUN_TEST(rtp_header_roundtrip);
+    RUN_TEST(backchannel_lifecycle);
 }
