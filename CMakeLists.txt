@@ -96,6 +96,8 @@ set(COMPY_SOURCES
     src/receiver.c
     src/backchannel.c
     src/auth.c
+    src/md5.c
+    include/compy/priv/md5.h
     src/macros.h
 )
 
