@@ -45,7 +45,8 @@ add_executable(
   transport.c
   types/rtcp.c
   rtcp.c
-  receiver.c)
+  receiver.c
+  auth.c)
 
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
   target_compile_options(tests PRIVATE -Wall -Wextra -fsanitize=address)

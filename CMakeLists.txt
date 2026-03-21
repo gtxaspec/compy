@@ -41,6 +41,7 @@ set(COMPY_SOURCES
     include/compy/types/status_code.h
     include/compy/types/sdp.h
     include/compy/types/rtp.h
+    include/compy/auth.h
     include/compy/nal/h264.h
     include/compy/nal/h265.h
     include/compy/nal.h
@@ -94,6 +95,7 @@ set(COMPY_SOURCES
     src/rtcp.c
     src/receiver.c
     src/backchannel.c
+    src/auth.c
     src/macros.h
 )
 

@@ -32,6 +32,7 @@
 #include <compy/types/rtcp.h>
 #include <compy/types/status_code.h>
 
+#include <compy/auth.h>
 #include <compy/backchannel.h>
 #include <compy/context.h>
 #include <compy/controller.h>
