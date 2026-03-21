@@ -81,6 +81,10 @@ target_link_libraries(MyProject compy)
 |--------|-------------|---------|
 | `COMPY_SHARED` | Build a shared library instead of static. | `OFF` |
 | `COMPY_FULL_MACRO_EXPANSION` | Show full macro expansion backtraces. | `OFF` |
+| `COMPY_TLS_OPENSSL` | Use OpenSSL for TLS/SRTP. | `OFF` |
+| `COMPY_TLS_WOLFSSL` | Use wolfSSL for TLS/SRTP. | `OFF` |
+| `COMPY_TLS_MBEDTLS` | Use mbedTLS for TLS/SRTP. | `OFF` |
+| `COMPY_TLS_BEARSSL` | Use BearSSL for TLS/SRTP (crypto only). | `OFF` |
 
 ## Usage
 
@@ -139,6 +143,37 @@ a=sendonly
 
 The `Compy_AudioReceiver` interface delivers incoming backchannel audio to the application via callback.
 
+### SRTP / SRTCP
+
+When compiled with a TLS backend (`-DCOMPY_TLS_OPENSSL=ON`), wrap transports for encrypted media:
+
+```c
+Compy_SrtpKeyMaterial key;
+compy_srtp_generate_key(&key);
+
+// Wrap RTP transport with SRTP
+Compy_Transport udp = compy_transport_udp(fd);
+Compy_Transport srtp = compy_transport_srtp(
+    udp, Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &key);
+
+// Wrap RTCP transport with SRTCP (same master key)
+Compy_Transport rtcp_udp = compy_transport_udp(rtcp_fd);
+Compy_Transport srtcp = compy_transport_srtcp(
+    rtcp_udp, Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &key);
+
+// Advertise in SDP
+char crypto_attr[128];
+compy_srtp_format_crypto_attr(
+    crypto_attr, sizeof crypto_attr, 1,
+    Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &key);
+// → "1 AES_CM_128_HMAC_SHA1_80 inline:<base64>"
+
+// Decrypt incoming SRTP (backchannel)
+Compy_SrtpRecvCtx *recv = compy_srtp_recv_new(
+    Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &key);
+compy_srtp_recv_unprotect(recv, packet, &len);  // verify + decrypt in-place
+```
+
 ## Tests
 
 ```
@@ -147,28 +182,70 @@ cmake -B build && cmake --build build
 ./build/tests
 ```
 
-106 tests, 1108 assertions, under Address Sanitizer.
+127 tests, 1214 assertions, under Address Sanitizer.
+
+To build with TLS/SRTP tests:
+
+```
+cmake -B build -DCOMPY_TLS_OPENSSL=ON && cmake --build build
+./build/tests
+```
 
 ## Architecture
 
 ```
-Application
-  |
-  v
-NalTransport ---- H.264/H.265 fragmentation (FU-A/FU)
-  |
-  v
-RtpTransport ---- RTP header construction, seq/timestamp tracking
-  |
-  v
-Transport ------- TCP interleaved ($+channel+len) or UDP (sendmsg)
-  |
-  v
-Network
+Send path (camera → client):
 
-Compy_Rtcp ------ Sender Reports, BYE (sends on Transport)
-Compy_RtpReceiver -- Demuxes incoming RTCP and backchannel RTP
-Compy_Auth ------ RFC 2617 Digest authentication
+  Application
+    |
+    v
+  NalTransport ------- H.264/H.265 NAL fragmentation (FU-A/FU)
+    |
+    v
+  RtpTransport ------- RTP header, seq/timestamp, stats
+    |
+    v
+  SrtpTransport ------ [optional] AES-128-CM encrypt + HMAC-SHA1 auth tag
+    |
+    v
+  Transport ---------- TCP interleaved ($+channel+len) or UDP (sendmsg)
+    |
+    v
+  TlsWriter ---------- [optional] TLS encrypt (RTSPS)
+    |
+    v
+  Network
+
+RTCP path:
+
+  Compy_Rtcp --------- Sender Reports, Receiver Reports, SDES, BYE
+    |
+    v
+  SrtcpTransport ----- [optional] SRTCP encrypt + E-flag + auth tag
+    |
+    v
+  Transport
+
+Receive path (client → camera):
+
+  Network
+    |
+    v
+  compy_tls_read() --- [optional] TLS decrypt (RTSPS)
+    |
+    v
+  compy_srtp_recv_unprotect() -- [optional] SRTP verify + decrypt
+    |                              (64-bit replay window)
+    v
+  Compy_RtpReceiver -- Demux: RTCP → Compy_Rtcp, RTP → AudioReceiver
+    |
+    v
+  Application (backchannel audio callback)
+
+Security:
+
+  Compy_Auth ---------- RFC 2617 Digest authentication (in before() hook)
+  Compy_SrtpRecvCtx --- SRTP/SRTCP decrypt with replay protection
 ```
 
 ## License
