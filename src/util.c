@@ -44,6 +44,7 @@ int compy_parse_transport(
         .multicast = false,
         .interleaved = Compy_ChannelPair_None(),
         .client_port = Compy_PortPair_None(),
+        .server_port = Compy_PortPair_None(),
     };
 
     const char *input = CharSlice99_alloca_c_str(header_value);
@@ -113,6 +114,12 @@ static int parse_transport_param(
             return -1;
         }
         result->client_port = Compy_PortPair_Some(val);
+    } else if (STARTS_WITH(param, "server_port")) {
+        Compy_PortPair val;
+        if (parse_port_pair(&val, param) == -1) {
+            return -1;
+        }
+        result->server_port = Compy_PortPair_Some(val);
     }
 
     return 0;

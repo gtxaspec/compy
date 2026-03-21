@@ -117,6 +117,11 @@ typedef struct {
      * The `client_port` parameter, if present.
      */
     Compy_PortPairOption client_port;
+
+    /**
+     * The `server_port` parameter, if present.
+     */
+    Compy_PortPairOption server_port;
 } Compy_TransportConfig;
 
 /**

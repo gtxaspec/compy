@@ -56,6 +56,8 @@
 #define VIDEO_SAMPLE_RATE  90000
 #define VIDEO_FPS          25
 
+#define RTCP_INTERVAL_SEC 5
+
 #define AUDIO_STREAM_ID 0
 #define VIDEO_STREAM_ID 1
 
@@ -64,7 +66,9 @@
 typedef struct {
     uint64_t session_id;
     Compy_RtpTransport *transport;
+    Compy_Rtcp *rtcp;
     struct event *ev;
+    struct event *rtcp_ev;
     Compy_Droppable ctx;
 } Stream;
 
@@ -87,13 +91,13 @@ static void on_sigint_cb(evutil_socket_t sig, short events, void *ctx);
 
 static int setup_transport(
     Client *self, Compy_Context *ctx, const Compy_Request *req,
-    Compy_Transport *t);
+    Compy_Transport *t, Compy_Transport *rtcp_t);
 static int setup_tcp(
-    Compy_Context *ctx, Compy_Transport *t,
+    Compy_Context *ctx, Compy_Transport *t, Compy_Transport *rtcp_t,
     Compy_TransportConfig config);
 static int setup_udp(
     const struct sockaddr *addr, Compy_Context *ctx, Compy_Transport *t,
-    Compy_TransportConfig config);
+    Compy_Transport *rtcp_t, Compy_TransportConfig config);
 
 typedef struct {
     Compy_RtpTransport *transport;
@@ -226,10 +230,29 @@ static void on_sigint_cb(evutil_socket_t sig, short events, void *ctx) {
     event_base_loopexit(base, &delay);
 }
 
+static void send_rtcp_sr_cb(evutil_socket_t fd, short events, void *arg) {
+    (void)fd;
+    (void)events;
+
+    Compy_Rtcp *rtcp = arg;
+    if (Compy_Rtcp_send_sr(rtcp) == -1) {
+        perror("Failed to send RTCP SR");
+    }
+}
+
 static void Client_drop(VSelf) {
     VSELF(Client);
 
     for (size_t i = 0; i < MAX_STREAMS; i++) {
+        if (self->streams[i].rtcp) {
+            int bye_ret __attribute__((unused)) =
+                Compy_Rtcp_send_bye(self->streams[i].rtcp);
+            if (self->streams[i].rtcp_ev) {
+                event_free(self->streams[i].rtcp_ev);
+            }
+            VCALL(DYN(Compy_Rtcp, Compy_Droppable, self->streams[i].rtcp),
+                  drop);
+        }
         if (self->streams[i].ctx.vptr != NULL) {
             VCALL(self->streams[i].ctx, drop);
         }
@@ -302,8 +325,8 @@ static void
 Client_setup(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     VSELF(Client);
 
-    Compy_Transport transport;
-    if (setup_transport(self, ctx, req, &transport) == -1) {
+    Compy_Transport transport, rtcp_transport;
+    if (setup_transport(self, ctx, req, &transport, &rtcp_transport) == -1) {
         return;
     }
 
@@ -339,6 +362,9 @@ Client_setup(VSelf, Compy_Context *ctx, const Compy_Request *req) {
             transport, VIDEO_PAYLOAD_TYPE, VIDEO_SAMPLE_RATE);
     }
 
+    stream->rtcp = Compy_Rtcp_new(
+        stream->transport, rtcp_transport, "compy@camera");
+
     compy_header(
         ctx, COMPY_HEADER_SESSION, "%" PRIu64, stream->session_id);
 
@@ -369,6 +395,19 @@ Client_play(VSelf, Compy_Context *ctx, const Compy_Request *req) {
                 self->streams[i].ctx = play_video(
                     self->base, self->bev, self->streams[i].transport,
                     &self->streams[i].ev, &self->streams_playing);
+            }
+
+            /* Start RTCP SR timer */
+            if (self->streams[i].rtcp &&
+                self->streams[i].rtcp_ev == NULL) {
+                self->streams[i].rtcp_ev = event_new(
+                    self->base, -1, EV_PERSIST | EV_TIMEOUT,
+                    send_rtcp_sr_cb, self->streams[i].rtcp);
+                assert(self->streams[i].rtcp_ev);
+                event_add(
+                    self->streams[i].rtcp_ev,
+                    &(const struct timeval){
+                        .tv_sec = RTCP_INTERVAL_SEC, .tv_usec = 0});
             }
 
             played = true;
@@ -457,7 +496,7 @@ impl(Compy_Controller, Client);
 
 static int setup_transport(
     Client *self, Compy_Context *ctx, const Compy_Request *req,
-    Compy_Transport *t) {
+    Compy_Transport *t, Compy_Transport *rtcp_t) {
     CharSlice99 transport_val;
     const bool transport_found = Compy_HeaderMap_find(
         &req->header_map, COMPY_HEADER_TRANSPORT, &transport_val);
@@ -476,14 +515,15 @@ static int setup_transport(
 
     switch (config.lower) {
     case Compy_LowerTransport_TCP:
-        if (setup_tcp(ctx, t, config) == -1) {
+        if (setup_tcp(ctx, t, rtcp_t, config) == -1) {
             compy_respond_internal_error(ctx);
             return -1;
         }
         break;
     case Compy_LowerTransport_UDP:
-        if (setup_udp((const struct sockaddr *)&self->addr, ctx, t, config) ==
-            -1) {
+        if (setup_udp(
+                (const struct sockaddr *)&self->addr, ctx, t, rtcp_t,
+                config) == -1) {
             compy_respond_internal_error(ctx);
             return -1;
         }
@@ -494,11 +534,13 @@ static int setup_transport(
 }
 
 static int setup_tcp(
-    Compy_Context *ctx, Compy_Transport *t,
+    Compy_Context *ctx, Compy_Transport *t, Compy_Transport *rtcp_t,
     Compy_TransportConfig config) {
     ifLet(config.interleaved, Compy_ChannelPair_Some, interleaved) {
         *t = compy_transport_tcp(
             Compy_Context_get_writer(ctx), interleaved->rtp_channel, 0);
+        *rtcp_t = compy_transport_tcp(
+            Compy_Context_get_writer(ctx), interleaved->rtcp_channel, 0);
 
         compy_header(
             ctx, COMPY_HEADER_TRANSPORT,
@@ -514,7 +556,7 @@ static int setup_tcp(
 
 static int setup_udp(
     const struct sockaddr *addr, Compy_Context *ctx, Compy_Transport *t,
-    Compy_TransportConfig config) {
+    Compy_Transport *rtcp_t, Compy_TransportConfig config) {
 
     ifLet(config.client_port, Compy_PortPair_Some, client_port) {
         int fd;
@@ -524,12 +566,48 @@ static int setup_udp(
             return -1;
         }
 
+        int rtcp_fd;
+        if ((rtcp_fd = compy_dgram_socket(
+                 addr->sa_family, compy_sockaddr_ip(addr),
+                 client_port->rtcp_port)) == -1) {
+            close(fd);
+            return -1;
+        }
+
+        /* Determine the local ports */
+        struct sockaddr_storage local_addr;
+        socklen_t local_len = sizeof local_addr;
+        uint16_t server_rtp_port = 0, server_rtcp_port = 0;
+        if (getsockname(fd, (struct sockaddr *)&local_addr, &local_len) == 0) {
+            if (local_addr.ss_family == AF_INET) {
+                server_rtp_port =
+                    ntohs(((struct sockaddr_in *)&local_addr)->sin_port);
+            } else {
+                server_rtp_port =
+                    ntohs(((struct sockaddr_in6 *)&local_addr)->sin6_port);
+            }
+        }
+        local_len = sizeof local_addr;
+        if (getsockname(
+                rtcp_fd, (struct sockaddr *)&local_addr, &local_len) == 0) {
+            if (local_addr.ss_family == AF_INET) {
+                server_rtcp_port =
+                    ntohs(((struct sockaddr_in *)&local_addr)->sin_port);
+            } else {
+                server_rtcp_port =
+                    ntohs(((struct sockaddr_in6 *)&local_addr)->sin6_port);
+            }
+        }
+
         *t = compy_transport_udp(fd);
+        *rtcp_t = compy_transport_udp(rtcp_fd);
 
         compy_header(
             ctx, COMPY_HEADER_TRANSPORT,
-            "RTP/AVP/UDP;unicast;client_port=%" PRIu16 "-%" PRIu16,
-            client_port->rtp_port, client_port->rtcp_port);
+            "RTP/AVP/UDP;unicast;client_port=%" PRIu16 "-%" PRIu16
+            ";server_port=%" PRIu16 "-%" PRIu16,
+            client_port->rtp_port, client_port->rtcp_port,
+            server_rtp_port, server_rtcp_port);
         return 0;
     }
 
