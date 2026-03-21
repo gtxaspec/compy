@@ -480,6 +480,60 @@ TEST srtcp_encrypt_decrypt_roundtrip(void) {
     PASS();
 }
 
+TEST srtp_replay_rejected(void) {
+    int fds[2];
+    ASSERT(socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds) == 0);
+
+    Compy_SrtpKeyMaterial key;
+    ASSERT_EQ(0, compy_srtp_generate_key(&key));
+
+    Compy_Transport udp = compy_transport_udp(fds[0]);
+    Compy_Transport srtp = compy_transport_srtp(
+        udp, Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &key);
+
+    Compy_SrtpRecvCtx *recv_ctx =
+        compy_srtp_recv_new(Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &key);
+
+    /* Send one packet */
+    uint8_t rtp_packet[32];
+    memset(rtp_packet, 0, sizeof rtp_packet);
+    rtp_packet[0] = 0x80;
+    rtp_packet[1] = 96;
+    rtp_packet[3] = 1; /* seq = 1 */
+    rtp_packet[8] = 0xAA;
+    rtp_packet[9] = 0xBB;
+    rtp_packet[10] = 0xCC;
+    rtp_packet[11] = 0xDD;
+    memset(rtp_packet + 12, 0x77, 20);
+
+    struct iovec bufs[] = {
+        {.iov_base = rtp_packet, .iov_len = sizeof rtp_packet},
+    };
+    Compy_IoVecSlice slices = Slice99_typed_from_array(bufs);
+    int ret __attribute__((unused)) = VCALL(srtp, transmit, slices);
+
+    /* Receive and decrypt first copy — should succeed */
+    uint8_t encrypted[256];
+    ssize_t n = recv(fds[1], encrypted, sizeof encrypted, MSG_DONTWAIT);
+    ASSERT(n > 0);
+
+    /* Save a copy for replay */
+    uint8_t replay[256];
+    memcpy(replay, encrypted, (size_t)n);
+
+    size_t dec_len = (size_t)n;
+    ASSERT_EQ(0, compy_srtp_recv_unprotect(recv_ctx, encrypted, &dec_len));
+
+    /* Try to decrypt the same packet again — should be rejected as replay */
+    size_t replay_len = (size_t)n;
+    ASSERT_EQ(-1, compy_srtp_recv_unprotect(recv_ctx, replay, &replay_len));
+
+    compy_srtp_recv_free(recv_ctx);
+    VCALL_SUPER(srtp, Compy_Droppable, drop);
+    close(fds[1]);
+    PASS();
+}
+
 SUITE(srtp) {
     RUN_TEST(srtp_generate_key_nonzero);
     RUN_TEST(srtp_crypto_attr_format);
@@ -493,4 +547,5 @@ SUITE(srtp) {
     RUN_TEST(srtp_encrypt_decrypt_roundtrip);
     RUN_TEST(srtp_decrypt_bad_auth_fails);
     RUN_TEST(srtcp_encrypt_decrypt_roundtrip);
+    RUN_TEST(srtp_replay_rejected);
 }

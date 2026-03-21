@@ -440,6 +440,15 @@ impl(Compy_Transport, Compy_SrtcpTransport);
 
 /* --- SRTP/SRTCP receive-side decryption --- */
 
+/*
+ * Replay protection window (RFC 3711 Section 3.3.2).
+ *
+ * A 64-bit bitmask tracks which of the last 64 packet indices have
+ * been seen. Packets older than the window are rejected. Packets
+ * within the window are checked against the bitmask.
+ */
+#define SRTP_REPLAY_WINDOW_SIZE 64
+
 struct Compy_SrtpRecvCtx {
     /* SRTP keys */
     uint8_t srtp_key[16];
@@ -449,9 +458,14 @@ struct Compy_SrtpRecvCtx {
     uint8_t srtcp_key[16];
     uint8_t srtcp_salt[14];
     uint8_t srtcp_auth_key[20];
-    /* State */
+    /* SRTP state */
     uint32_t roc;
-    uint16_t prev_seq;
+    uint16_t s_l;     /* highest seq number seen */
+    bool initialized; /* false until first packet */
+    uint64_t replay_window;
+    /* SRTCP state */
+    uint32_t srtcp_highest_index;
+    /* Common */
     int auth_tag_len;
 };
 
@@ -485,7 +499,10 @@ compy_srtp_recv_new(Compy_SrtpSuite suite, const Compy_SrtpKeyMaterial *key) {
         self->srtcp_auth_key, 20);
 
     self->roc = 0;
-    self->prev_seq = 0;
+    self->s_l = 0;
+    self->initialized = false;
+    self->replay_window = 0;
+    self->srtcp_highest_index = 0;
 
     switch (suite) {
     case Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80:
@@ -524,6 +541,97 @@ void compy_srtp_recv_free(Compy_SrtpRecvCtx *ctx) {
     }
 }
 
+/*
+ * ROC estimation per RFC 3711 Section 3.3.1.
+ *
+ * Estimates the sender's ROC from the received 16-bit sequence number
+ * and the receiver's current state (s_l = highest seq seen, roc).
+ * Returns the estimated ROC for this packet.
+ */
+static uint32_t
+estimate_roc(const Compy_SrtpRecvCtx *ctx, uint16_t seq, uint32_t *out_index) {
+    uint32_t v;
+
+    if (!ctx->initialized) {
+        v = 0;
+    } else if (ctx->s_l < 0x8000) {
+        if (seq - ctx->s_l > 0x8000) {
+            /* Seq wrapped backward — use previous ROC */
+            v = (ctx->roc == 0) ? 0 : ctx->roc - 1;
+        } else {
+            v = ctx->roc;
+        }
+    } else {
+        if (ctx->s_l - 0x8000 > seq) {
+            /* Seq wrapped forward — next ROC */
+            v = ctx->roc + 1;
+        } else {
+            v = ctx->roc;
+        }
+    }
+
+    *out_index = v * 65536 + seq;
+    return v;
+}
+
+/*
+ * Replay check per RFC 3711 Section 3.3.2.
+ *
+ * Returns 0 if the packet is acceptable, -1 if it's a replay.
+ * Does NOT update the window — call replay_update after successful auth.
+ */
+static int replay_check(const Compy_SrtpRecvCtx *ctx, uint32_t index) {
+    if (!ctx->initialized) {
+        return 0;
+    }
+
+    uint32_t highest = ctx->roc * 65536 + ctx->s_l;
+
+    if (index > highest) {
+        return 0; /* New packet, ahead of window */
+    }
+
+    uint32_t delta = highest - index;
+    if (delta >= SRTP_REPLAY_WINDOW_SIZE) {
+        return -1; /* Too old */
+    }
+
+    if (ctx->replay_window & ((uint64_t)1 << delta)) {
+        return -1; /* Already seen */
+    }
+
+    return 0;
+}
+
+static void replay_update(Compy_SrtpRecvCtx *ctx, uint16_t seq, uint32_t v) {
+    uint32_t index = v * 65536 + seq;
+
+    if (!ctx->initialized) {
+        ctx->s_l = seq;
+        ctx->roc = v;
+        ctx->replay_window = 1;
+        ctx->initialized = true;
+        return;
+    }
+
+    uint32_t highest = ctx->roc * 65536 + ctx->s_l;
+
+    if (index > highest) {
+        uint32_t shift = index - highest;
+        if (shift < SRTP_REPLAY_WINDOW_SIZE) {
+            ctx->replay_window <<= shift;
+        } else {
+            ctx->replay_window = 0;
+        }
+        ctx->replay_window |= 1;
+        ctx->s_l = seq;
+        ctx->roc = v;
+    } else {
+        uint32_t delta = highest - index;
+        ctx->replay_window |= ((uint64_t)1 << delta);
+    }
+}
+
 int compy_srtp_recv_unprotect(
     Compy_SrtpRecvCtx *ctx, uint8_t *data, size_t *len) {
     assert(ctx);
@@ -544,18 +652,19 @@ int compy_srtp_recv_unprotect(
     ssrc = ntohl(ssrc);
     seq = ntohs(seq);
 
-    /* ROC estimation */
-    if (seq < ctx->prev_seq && (ctx->prev_seq - seq) > 0x7FFF) {
-        ctx->roc++;
-    }
-    ctx->prev_seq = seq;
+    /* Estimate ROC and compute packet index */
+    uint32_t index;
+    uint32_t v = estimate_roc(ctx, seq, &index);
 
-    uint32_t index = ctx->roc * 65536 + seq;
+    /* Replay check (before auth, to reject cheap) */
+    if (replay_check(ctx, index) != 0) {
+        return -1;
+    }
 
     /* Verify authentication tag */
     uint8_t auth_input[SRTP_MAX_PACKET_SIZE + 4];
     memcpy(auth_input, data, encrypted_len);
-    uint32_t roc_be = htonl(ctx->roc);
+    uint32_t roc_be = htonl(v);
     memcpy(auth_input + encrypted_len, &roc_be, 4);
 
     uint8_t expected_tag[20];
@@ -570,6 +679,9 @@ int compy_srtp_recv_unprotect(
     if (diff != 0) {
         return -1;
     }
+
+    /* Auth passed — update replay window */
+    replay_update(ctx, seq, v);
 
     /* Decrypt payload */
     uint8_t cc = data[0] & 0x0F;
@@ -620,6 +732,12 @@ int compy_srtcp_recv_unprotect(
     srtcp_index = ntohl(srtcp_index);
     bool encrypted = (srtcp_index & 0x80000000) != 0;
     srtcp_index &= 0x7FFFFFFF;
+
+    /* Reject replayed SRTCP packets (must be monotonically increasing) */
+    if (srtcp_index < ctx->srtcp_highest_index) {
+        return -1;
+    }
+    ctx->srtcp_highest_index = srtcp_index + 1;
 
     /* Extract SSRC from RTCP header (bytes 4-7) */
     uint32_t ssrc;
