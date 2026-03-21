@@ -1,26 +1,26 @@
-#include <smolrtsp/types/response_line.h>
+#include <compy/types/response_line.h>
 
 #include "test_util.h"
 #include <greatest.h>
 
-DEF_TEST_PARSE(SmolRTSP_ResponseLine)
+DEF_TEST_PARSE(Compy_ResponseLine)
 
 TEST parse_response_line(void) {
-    const SmolRTSP_ResponseLine expected = {
+    const Compy_ResponseLine expected = {
         .version = {.major = 1, .minor = 1},
-        .code = SMOLRTSP_STATUS_OK,
+        .code = COMPY_STATUS_OK,
         .reason = CharSlice99_from_str("OK"),
     };
 
     TEST_PARSE("RTSP/1.1 200 OK\r\n", expected);
 
-    SmolRTSP_ResponseLine result;
+    Compy_ResponseLine result;
 
-    ASSERT(SmolRTSP_ParseResult_is_failure(SmolRTSP_ResponseLine_parse(
+    ASSERT(Compy_ParseResult_is_failure(Compy_ResponseLine_parse(
         &result, CharSlice99_from_str("ABRACADABRA/1.1 200 OK\r\n"))));
-    ASSERT(SmolRTSP_ParseResult_is_failure(SmolRTSP_ResponseLine_parse(
+    ASSERT(Compy_ParseResult_is_failure(Compy_ResponseLine_parse(
         &result, CharSlice99_from_str("RTSP/42 200 OK\r\n"))));
-    ASSERT(SmolRTSP_ParseResult_is_failure(SmolRTSP_ResponseLine_parse(
+    ASSERT(Compy_ParseResult_is_failure(Compy_ResponseLine_parse(
         &result, CharSlice99_from_str("RTSP/1.1 ~~~ OK\r\n"))));
 
     PASS();
@@ -29,14 +29,14 @@ TEST parse_response_line(void) {
 TEST serialize_response_line(void) {
     char buffer[100] = {0};
 
-    const SmolRTSP_ResponseLine line = {
-        .version = (SmolRTSP_RtspVersion){1, 0},
-        .code = SMOLRTSP_STATUS_OK,
+    const Compy_ResponseLine line = {
+        .version = (Compy_RtspVersion){1, 0},
+        .code = COMPY_STATUS_OK,
         .reason = CharSlice99_from_str("OK"),
     };
 
     const ssize_t ret =
-        SmolRTSP_ResponseLine_serialize(&line, smolrtsp_string_writer(buffer));
+        Compy_ResponseLine_serialize(&line, compy_string_writer(buffer));
 
     const char *expected = "RTSP/1.0 200 OK\r\n";
 

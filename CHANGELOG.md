@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
- - Fix the `SmolRTSP_NalTransportConfig_default` value for H.265 ([PR #17](https://github.com/OpenIPC/smolrtsp/pull/17)).
+ - Fix the `Compy_NalTransportConfig_default` value for H.265 ([PR #17](https://github.com/OpenIPC/compy/pull/17)).
 
 ## 0.1.3 - 2023-03-12
 
@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
- - Suppress a compilation warning for an unused variable in `smolrtsp_vheader`.
+ - Suppress a compilation warning for an unused variable in `compy_vheader`.
  - Overflow while computing an RTP timestamp.
 
 ## 0.1.1 - 2022-03-31
@@ -28,13 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
  - Mark the following functions with `__attribute__((warn_unused_result))` (when available):
-   - `SmolRTSP_ParseError_print`.
-   - `SmolRTSP_MessageBody_empty`.
-   - `SmolRTSP_Request_uninit`.
-   - `SmolRTSP_Response_uninit`.
-   - `SmolRTSP_NalTransportConfig_default`.
-   - `smolrtsp_determine_start_code`.
-   - `smolrtsp_dgram_socket`.
+   - `Compy_ParseError_print`.
+   - `Compy_MessageBody_empty`.
+   - `Compy_Request_uninit`.
+   - `Compy_Response_uninit`.
+   - `Compy_NalTransportConfig_default`.
+   - `compy_determine_start_code`.
+   - `compy_dgram_socket`.
 
 ## 0.1.0 - 2022-03-30
 

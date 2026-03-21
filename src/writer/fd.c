@@ -1,4 +1,4 @@
-#include <smolrtsp/writer.h>
+#include <compy/writer.h>
 
 #include <assert.h>
 
@@ -51,9 +51,9 @@ static int FdWriter_writef(VSelf, const char *restrict fmt, ...) {
     return ret;
 }
 
-impl(SmolRTSP_Writer, FdWriter);
+impl(Compy_Writer, FdWriter);
 
-SmolRTSP_Writer smolrtsp_fd_writer(int *fd) {
+Compy_Writer compy_fd_writer(int *fd) {
     assert(fd);
-    return DYN(FdWriter, SmolRTSP_Writer, fd);
+    return DYN(FdWriter, Compy_Writer, fd);
 }

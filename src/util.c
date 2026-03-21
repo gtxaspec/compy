@@ -1,4 +1,4 @@
-#include <smolrtsp/util.h>
+#include <compy/util.h>
 
 #include <assert.h>
 #include <inttypes.h>
@@ -9,11 +9,11 @@
 #include <alloca.h>
 #include <arpa/inet.h>
 
-const char *SmolRTSP_LowerTransport_str(SmolRTSP_LowerTransport self) {
+const char *Compy_LowerTransport_str(Compy_LowerTransport self) {
     switch (self) {
-    case SmolRTSP_LowerTransport_TCP:
+    case Compy_LowerTransport_TCP:
         return "TCP";
-    case SmolRTSP_LowerTransport_UDP:
+    case Compy_LowerTransport_UDP:
         return "UDP";
     default:
         return "Unknown";
@@ -26,24 +26,24 @@ const char *SmolRTSP_LowerTransport_str(SmolRTSP_LowerTransport self) {
     (strncmp((str), (beginning), strlen(beginning)) == 0)
 
 static int parse_lower_transport(
-    SmolRTSP_TransportConfig *restrict result, const char *header_value);
+    Compy_TransportConfig *restrict result, const char *header_value);
 static int parse_transport_param(
-    SmolRTSP_TransportConfig *restrict result, const char *param);
+    Compy_TransportConfig *restrict result, const char *param);
 static int parse_channel_pair(
-    SmolRTSP_ChannelPair *restrict val, const char *restrict param);
+    Compy_ChannelPair *restrict val, const char *restrict param);
 static int
-parse_port_pair(SmolRTSP_PortPair *restrict val, const char *restrict param);
+parse_port_pair(Compy_PortPair *restrict val, const char *restrict param);
 
-int smolrtsp_parse_transport(
-    SmolRTSP_TransportConfig *restrict config, CharSlice99 header_value) {
+int compy_parse_transport(
+    Compy_TransportConfig *restrict config, CharSlice99 header_value) {
     assert(config);
 
-    SmolRTSP_TransportConfig result = {
+    Compy_TransportConfig result = {
         .lower = 0,
         .unicast = false,
         .multicast = false,
-        .interleaved = SmolRTSP_ChannelPair_None(),
-        .client_port = SmolRTSP_PortPair_None(),
+        .interleaved = Compy_ChannelPair_None(),
+        .client_port = Compy_PortPair_None(),
     };
 
     const char *input = CharSlice99_alloca_c_str(header_value);
@@ -77,7 +77,7 @@ success:
 }
 
 static int parse_lower_transport(
-    SmolRTSP_TransportConfig *restrict result, const char *header_value) {
+    Compy_TransportConfig *restrict result, const char *header_value) {
     const char *rtp_avp = "RTP/AVP";
     if (strncmp(header_value, rtp_avp, strlen(rtp_avp)) != 0) {
         return -1;
@@ -85,41 +85,41 @@ static int parse_lower_transport(
     header_value += strlen(rtp_avp);
 
     if (strncmp(header_value, "/TCP", strlen("/TCP")) == 0) {
-        result->lower = SmolRTSP_LowerTransport_TCP;
+        result->lower = Compy_LowerTransport_TCP;
     } else if (strncmp(header_value, "/UDP", strlen("/UDP")) == 0) {
-        result->lower = SmolRTSP_LowerTransport_UDP;
+        result->lower = Compy_LowerTransport_UDP;
     } else {
-        result->lower = SmolRTSP_LowerTransport_UDP;
+        result->lower = Compy_LowerTransport_UDP;
     }
 
     return 0;
 }
 
 static int parse_transport_param(
-    SmolRTSP_TransportConfig *restrict result, const char *param) {
+    Compy_TransportConfig *restrict result, const char *param) {
     if (STARTS_WITH(param, "unicast")) {
         result->unicast = true;
     } else if (STARTS_WITH(param, "multicast")) {
         result->multicast = true;
     } else if (STARTS_WITH(param, "interleaved")) {
-        SmolRTSP_ChannelPair val;
+        Compy_ChannelPair val;
         if (parse_channel_pair(&val, param) == -1) {
             return -1;
         }
-        result->interleaved = SmolRTSP_ChannelPair_Some(val);
+        result->interleaved = Compy_ChannelPair_Some(val);
     } else if (STARTS_WITH(param, "client_port")) {
-        SmolRTSP_PortPair val;
+        Compy_PortPair val;
         if (parse_port_pair(&val, param) == -1) {
             return -1;
         }
-        result->client_port = SmolRTSP_PortPair_Some(val);
+        result->client_port = Compy_PortPair_Some(val);
     }
 
     return 0;
 }
 
 static int parse_channel_pair(
-    SmolRTSP_ChannelPair *restrict val, const char *restrict param) {
+    Compy_ChannelPair *restrict val, const char *restrict param) {
     if (PARSE_RANGE(val->rtp_channel, val->rtcp_channel, SCNu8, param) != 2) {
         return -1;
     }
@@ -128,7 +128,7 @@ static int parse_channel_pair(
 }
 
 static int
-parse_port_pair(SmolRTSP_PortPair *restrict val, const char *restrict param) {
+parse_port_pair(Compy_PortPair *restrict val, const char *restrict param) {
     if (PARSE_RANGE(val->rtp_port, val->rtcp_port, SCNu16, param) != 2) {
         return -1;
     }
@@ -136,7 +136,7 @@ parse_port_pair(SmolRTSP_PortPair *restrict val, const char *restrict param) {
     return 0;
 }
 
-uint32_t smolrtsp_interleaved_header(uint8_t channel_id, uint16_t payload_len) {
+uint32_t compy_interleaved_header(uint8_t channel_id, uint16_t payload_len) {
     uint8_t bytes[sizeof(uint32_t)] = {0};
 
     bytes[0] = '$';
@@ -148,7 +148,7 @@ uint32_t smolrtsp_interleaved_header(uint8_t channel_id, uint16_t payload_len) {
     return n;
 }
 
-void smolrtsp_parse_interleaved_header(
+void compy_parse_interleaved_header(
     const uint8_t data[restrict static 4], uint8_t *restrict channel_id,
     uint16_t *restrict payload_len) {
     assert(channel_id);

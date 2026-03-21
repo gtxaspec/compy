@@ -1,9 +1,9 @@
-#include <smolrtsp/nal/h264.h>
+#include <compy/nal/h264.h>
 
 #include <greatest.h>
 
 TEST parse(void) {
-    const SmolRTSP_H264NalHeader h = SmolRTSP_H264NalHeader_parse(0b01011010);
+    const Compy_H264NalHeader h = Compy_H264NalHeader_parse(0b01011010);
 
     ASSERT(!h.forbidden_zero_bit);
     ASSERT_EQ(0b10, h.ref_idc);
@@ -13,30 +13,30 @@ TEST parse(void) {
 }
 
 TEST serialize(void) {
-    const SmolRTSP_H264NalHeader h = {
+    const Compy_H264NalHeader h = {
         .forbidden_zero_bit = false,
         .ref_idc = 0b10,
         .unit_type = 0b11010,
     };
 
-    const uint8_t ret = SmolRTSP_H264NalHeader_serialize(h);
+    const uint8_t ret = Compy_H264NalHeader_serialize(h);
     ASSERT_EQ(0b01011010, ret);
 
     PASS();
 }
 
 TEST write_fu_header(void) {
-    const SmolRTSP_H264NalHeader h = {
+    const Compy_H264NalHeader h = {
         .forbidden_zero_bit = false,
         .ref_idc = 0b10,
         .unit_type = 0b11010,
     };
 
-    uint8_t buffer[SMOLRTSP_H264_FU_HEADER_SIZE] = {0};
+    uint8_t buffer[COMPY_H264_FU_HEADER_SIZE] = {0};
 
 #define CHECK(is_first_fragment, is_last_fragment, ...)                        \
     do {                                                                       \
-        SmolRTSP_H264NalHeader_write_fu_header(                                \
+        Compy_H264NalHeader_write_fu_header(                                \
             h, buffer, is_first_fragment, is_last_fragment);                   \
         ASSERT_MEM_EQ(((uint8_t[]){__VA_ARGS__}), buffer, sizeof buffer);      \
     } while (0)

@@ -1,11 +1,11 @@
-#include <smolrtsp/writer.h>
+#include <compy/writer.h>
 
 #include "macros.h"
 
 #include <assert.h>
 
-ssize_t smolrtsp_write_slices(
-    SmolRTSP_Writer w, size_t len,
+ssize_t compy_write_slices(
+    Compy_Writer w, size_t len,
     const CharSlice99 data[restrict static len]) {
     assert(w.self && w.vptr);
 

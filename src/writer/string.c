@@ -1,4 +1,4 @@
-#include <smolrtsp/writer.h>
+#include <compy/writer.h>
 
 #include <assert.h>
 #include <string.h>
@@ -53,9 +53,9 @@ static int StringWriter_writef(VSelf, const char *restrict fmt, ...) {
     return ret;
 }
 
-impl(SmolRTSP_Writer, StringWriter);
+impl(Compy_Writer, StringWriter);
 
-SmolRTSP_Writer smolrtsp_string_writer(char *buffer) {
+Compy_Writer compy_string_writer(char *buffer) {
     assert(buffer);
-    return DYN(StringWriter, SmolRTSP_Writer, buffer);
+    return DYN(StringWriter, Compy_Writer, buffer);
 }

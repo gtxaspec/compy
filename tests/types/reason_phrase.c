@@ -1,9 +1,9 @@
-#include <smolrtsp/types/reason_phrase.h>
+#include <compy/types/reason_phrase.h>
 
 #include "test_util.h"
 #include <greatest.h>
 
-DEF_TEST_PARSE(SmolRTSP_ReasonPhrase)
+DEF_TEST_PARSE(Compy_ReasonPhrase)
 
 TEST parse_reason_phrase(void) {
     TEST_PARSE(

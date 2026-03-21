@@ -1,28 +1,28 @@
-#include <smolrtsp/types/request_uri.h>
+#include <compy/types/request_uri.h>
 
 #include "parsing.h"
 
 #include <assert.h>
 
-SmolRTSP_ParseResult SmolRTSP_RequestUri_parse(
-    SmolRTSP_RequestUri *restrict self, CharSlice99 input) {
+Compy_ParseResult Compy_RequestUri_parse(
+    Compy_RequestUri *restrict self, CharSlice99 input) {
     assert(self);
 
     const CharSlice99 backup = input;
 
-    MATCH(smolrtsp_match_whitespaces(input));
+    MATCH(compy_match_whitespaces(input));
     CharSlice99 uri = input;
-    MATCH(smolrtsp_match_non_whitespaces(input));
+    MATCH(compy_match_non_whitespaces(input));
     uri = CharSlice99_from_ptrdiff(uri.ptr, input.ptr);
 
     *self = uri;
 
-    return SmolRTSP_ParseResult_complete(input.ptr - backup.ptr);
+    return Compy_ParseResult_complete(input.ptr - backup.ptr);
 }
 
-bool SmolRTSP_RequestUri_eq(
-    const SmolRTSP_RequestUri *restrict lhs,
-    const SmolRTSP_RequestUri *restrict rhs) {
+bool Compy_RequestUri_eq(
+    const Compy_RequestUri *restrict lhs,
+    const Compy_RequestUri *restrict rhs) {
     assert(lhs);
     assert(rhs);
 

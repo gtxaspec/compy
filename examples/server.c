@@ -10,9 +10,9 @@
  * [1] https://libevent.org/
  */
 
-#include <smolrtsp.h>
+#include <compy.h>
 
-#include <smolrtsp-libevent.h>
+#include "compy-libevent.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -44,7 +44,7 @@
 #define ENABLE_AUDIO
 #define ENABLE_VIDEO
 
-#define SERVER_PORT SMOLRTSP_DEFAULT_PORT
+#define SERVER_PORT 8554
 
 #define AUDIO_PCMU_PAYLOAD_TYPE  0
 #define AUDIO_SAMPLE_RATE        8000
@@ -63,9 +63,9 @@
 
 typedef struct {
     uint64_t session_id;
-    SmolRTSP_RtpTransport *transport;
+    Compy_RtpTransport *transport;
     struct event *ev;
-    SmolRTSP_Droppable ctx;
+    Compy_Droppable ctx;
 } Stream;
 
 typedef struct {
@@ -77,7 +77,7 @@ typedef struct {
     int streams_playing;
 } Client;
 
-declImpl(SmolRTSP_Controller, Client);
+declImpl(Compy_Controller, Client);
 
 static void listener_cb(
     struct evconnlistener *listener, evutil_socket_t fd, struct sockaddr *sa,
@@ -86,31 +86,31 @@ static void on_event_cb(struct bufferevent *bev, short events, void *ctx);
 static void on_sigint_cb(evutil_socket_t sig, short events, void *ctx);
 
 static int setup_transport(
-    Client *self, SmolRTSP_Context *ctx, const SmolRTSP_Request *req,
-    SmolRTSP_Transport *t);
+    Client *self, Compy_Context *ctx, const Compy_Request *req,
+    Compy_Transport *t);
 static int setup_tcp(
-    SmolRTSP_Context *ctx, SmolRTSP_Transport *t,
-    SmolRTSP_TransportConfig config);
+    Compy_Context *ctx, Compy_Transport *t,
+    Compy_TransportConfig config);
 static int setup_udp(
-    const struct sockaddr *addr, SmolRTSP_Context *ctx, SmolRTSP_Transport *t,
-    SmolRTSP_TransportConfig config);
+    const struct sockaddr *addr, Compy_Context *ctx, Compy_Transport *t,
+    Compy_TransportConfig config);
 
 typedef struct {
-    SmolRTSP_RtpTransport *transport;
+    Compy_RtpTransport *transport;
     size_t i;
     struct event *ev;
     struct bufferevent *bev;
     int *streams_playing;
 } AudioCtx;
 
-static SmolRTSP_Droppable play_audio(
-    struct event_base *base, struct bufferevent *bev, SmolRTSP_RtpTransport *t,
+static Compy_Droppable play_audio(
+    struct event_base *base, struct bufferevent *bev, Compy_RtpTransport *t,
     struct event **ev, int *streams_playing);
 static void send_audio_packet_cb(evutil_socket_t fd, short events, void *arg);
 
 typedef struct {
-    SmolRTSP_NalTransport *transport;
-    SmolRTSP_NalStartCodeTester start_code_tester;
+    Compy_NalTransport *transport;
+    Compy_NalStartCodeTester start_code_tester;
     uint32_t timestamp;
     U8Slice99 video;
     uint8_t *nalu_start;
@@ -119,8 +119,8 @@ typedef struct {
     int *streams_playing;
 } VideoCtx;
 
-static SmolRTSP_Droppable play_video(
-    struct event_base *base, struct bufferevent *bev, SmolRTSP_RtpTransport *t,
+static Compy_Droppable play_video(
+    struct event_base *base, struct bufferevent *bev, Compy_RtpTransport *t,
     struct event **ev, int *streams_playing);
 static void send_video_packet_cb(evutil_socket_t fd, short events, void *arg);
 static bool send_nalu(VideoCtx *ctx);
@@ -196,10 +196,10 @@ static void listener_cb(
     memcpy(&client->addr, sa, socklen);
     client->addr_len = socklen;
 
-    SmolRTSP_Controller controller = DYN(Client, SmolRTSP_Controller, client);
-    void *ctx = smolrtsp_libevent_ctx(controller);
+    Compy_Controller controller = DYN(Client, Compy_Controller, client);
+    void *ctx = compy_libevent_ctx(controller);
 
-    bufferevent_setcb(bev, smolrtsp_libevent_cb, NULL, on_event_cb, ctx);
+    bufferevent_setcb(bev, compy_libevent_cb, NULL, on_event_cb, ctx);
     bufferevent_enable(bev, EV_READ | EV_WRITE);
 }
 
@@ -211,7 +211,7 @@ static void on_event_cb(struct bufferevent *bev, short events, void *ctx) {
     }
 
     bufferevent_free(bev);
-    smolrtsp_libevent_ctx_free(ctx);
+    compy_libevent_ctx_free(ctx);
 }
 
 static void on_sigint_cb(evutil_socket_t sig, short events, void *ctx) {
@@ -238,71 +238,71 @@ static void Client_drop(VSelf) {
     free(self);
 }
 
-impl(SmolRTSP_Droppable, Client);
+impl(Compy_Droppable, Client);
 
 static void
-Client_options(VSelf, SmolRTSP_Context *ctx, const SmolRTSP_Request *req) {
+Client_options(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     VSELF(Client);
 
     (void)self;
     (void)req;
 
-    smolrtsp_header(
-        ctx, SMOLRTSP_HEADER_PUBLIC, "DESCRIBE, SETUP, TEARDOWN, PLAY");
-    smolrtsp_respond_ok(ctx);
+    compy_header(
+        ctx, COMPY_HEADER_PUBLIC, "DESCRIBE, SETUP, TEARDOWN, PLAY");
+    compy_respond_ok(ctx);
 }
 
 static void
-Client_describe(VSelf, SmolRTSP_Context *ctx, const SmolRTSP_Request *req) {
+Client_describe(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     VSELF(Client);
 
     (void)self;
     (void)req;
 
     char sdp_buf[1024] = {0};
-    SmolRTSP_Writer sdp = smolrtsp_string_writer(sdp_buf);
+    Compy_Writer sdp = compy_string_writer(sdp_buf);
     ssize_t ret = 0;
 
     // clang-format off
-    SMOLRTSP_SDP_DESCRIBE(
+    COMPY_SDP_DESCRIBE(
         ret, sdp,
-        (SMOLRTSP_SDP_VERSION, "0"),
-        (SMOLRTSP_SDP_ORIGIN, "SmolRTSP 3855320066 3855320129 IN IP4 0.0.0.0"),
-        (SMOLRTSP_SDP_SESSION_NAME, "SmolRTSP example"),
-        (SMOLRTSP_SDP_CONNECTION, "IN IP4 0.0.0.0"),
-        (SMOLRTSP_SDP_TIME, "0 0"));
+        (COMPY_SDP_VERSION, "0"),
+        (COMPY_SDP_ORIGIN, "Compy 3855320066 3855320129 IN IP4 0.0.0.0"),
+        (COMPY_SDP_SESSION_NAME, "Compy example"),
+        (COMPY_SDP_CONNECTION, "IN IP4 0.0.0.0"),
+        (COMPY_SDP_TIME, "0 0"));
 
 #ifdef ENABLE_AUDIO
-    SMOLRTSP_SDP_DESCRIBE(
+    COMPY_SDP_DESCRIBE(
         ret, sdp,
-        (SMOLRTSP_SDP_MEDIA, "audio 0 RTP/AVP %d", AUDIO_PCMU_PAYLOAD_TYPE),
-        (SMOLRTSP_SDP_ATTR, "control:audio"));
+        (COMPY_SDP_MEDIA, "audio 0 RTP/AVP %d", AUDIO_PCMU_PAYLOAD_TYPE),
+        (COMPY_SDP_ATTR, "control:audio"));
 #endif
 
 #ifdef ENABLE_VIDEO
-    SMOLRTSP_SDP_DESCRIBE(
+    COMPY_SDP_DESCRIBE(
         ret, sdp,
-        (SMOLRTSP_SDP_MEDIA, "video 0 RTP/AVP %d", VIDEO_PAYLOAD_TYPE),
-        (SMOLRTSP_SDP_ATTR, "control:video"),
-        (SMOLRTSP_SDP_ATTR, "rtpmap:%d H264/%" PRIu32, VIDEO_PAYLOAD_TYPE, VIDEO_SAMPLE_RATE),
-        (SMOLRTSP_SDP_ATTR, "fmtp:%d packetization-mode=1", VIDEO_PAYLOAD_TYPE),
-        (SMOLRTSP_SDP_ATTR, "framerate:%d", VIDEO_FPS));
+        (COMPY_SDP_MEDIA, "video 0 RTP/AVP %d", VIDEO_PAYLOAD_TYPE),
+        (COMPY_SDP_ATTR, "control:video"),
+        (COMPY_SDP_ATTR, "rtpmap:%d H264/%" PRIu32, VIDEO_PAYLOAD_TYPE, VIDEO_SAMPLE_RATE),
+        (COMPY_SDP_ATTR, "fmtp:%d packetization-mode=1", VIDEO_PAYLOAD_TYPE),
+        (COMPY_SDP_ATTR, "framerate:%d", VIDEO_FPS));
 #endif
     // clang-format on
 
     assert(ret > 0);
 
-    smolrtsp_header(ctx, SMOLRTSP_HEADER_CONTENT_TYPE, "application/sdp");
-    smolrtsp_body(ctx, CharSlice99_from_str(sdp_buf));
+    compy_header(ctx, COMPY_HEADER_CONTENT_TYPE, "application/sdp");
+    compy_body(ctx, CharSlice99_from_str(sdp_buf));
 
-    smolrtsp_respond_ok(ctx);
+    compy_respond_ok(ctx);
 }
 
 static void
-Client_setup(VSelf, SmolRTSP_Context *ctx, const SmolRTSP_Request *req) {
+Client_setup(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     VSELF(Client);
 
-    SmolRTSP_Transport transport;
+    Compy_Transport transport;
     if (setup_transport(self, ctx, req, &transport) == -1) {
         return;
     }
@@ -314,15 +314,15 @@ Client_setup(VSelf, SmolRTSP_Context *ctx, const SmolRTSP_Request *req) {
             : VIDEO_STREAM_ID;
     Stream *stream = &self->streams[stream_id];
 
-    const bool aggregate_control_requested = SmolRTSP_HeaderMap_contains_key(
-        &req->header_map, SMOLRTSP_HEADER_SESSION);
+    const bool aggregate_control_requested = Compy_HeaderMap_contains_key(
+        &req->header_map, COMPY_HEADER_SESSION);
     if (aggregate_control_requested) {
         uint64_t session_id;
-        if (smolrtsp_scanf_header(
-                &req->header_map, SMOLRTSP_HEADER_SESSION, "%" SCNu64,
+        if (compy_scanf_header(
+                &req->header_map, COMPY_HEADER_SESSION, "%" SCNu64,
                 &session_id) != 1) {
-            smolrtsp_respond(
-                ctx, SMOLRTSP_STATUS_BAD_REQUEST, "Malformed `Session'");
+            compy_respond(
+                ctx, COMPY_STATUS_BAD_REQUEST, "Malformed `Session'");
             return;
         }
 
@@ -332,29 +332,29 @@ Client_setup(VSelf, SmolRTSP_Context *ctx, const SmolRTSP_Request *req) {
     }
 
     if (AUDIO_STREAM_ID == stream_id) {
-        stream->transport = SmolRTSP_RtpTransport_new(
+        stream->transport = Compy_RtpTransport_new(
             transport, AUDIO_PCMU_PAYLOAD_TYPE, AUDIO_SAMPLE_RATE);
     } else {
-        stream->transport = SmolRTSP_RtpTransport_new(
+        stream->transport = Compy_RtpTransport_new(
             transport, VIDEO_PAYLOAD_TYPE, VIDEO_SAMPLE_RATE);
     }
 
-    smolrtsp_header(
-        ctx, SMOLRTSP_HEADER_SESSION, "%" PRIu64, stream->session_id);
+    compy_header(
+        ctx, COMPY_HEADER_SESSION, "%" PRIu64, stream->session_id);
 
-    smolrtsp_respond_ok(ctx);
+    compy_respond_ok(ctx);
 }
 
 static void
-Client_play(VSelf, SmolRTSP_Context *ctx, const SmolRTSP_Request *req) {
+Client_play(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     VSELF(Client);
 
     uint64_t session_id;
-    if (smolrtsp_scanf_header(
-            &req->header_map, SMOLRTSP_HEADER_SESSION, "%" SCNu64,
+    if (compy_scanf_header(
+            &req->header_map, COMPY_HEADER_SESSION, "%" SCNu64,
             &session_id) != 1) {
-        smolrtsp_respond(
-            ctx, SMOLRTSP_STATUS_BAD_REQUEST, "Malformed `Session'");
+        compy_respond(
+            ctx, COMPY_STATUS_BAD_REQUEST, "Malformed `Session'");
         return;
     }
 
@@ -376,25 +376,25 @@ Client_play(VSelf, SmolRTSP_Context *ctx, const SmolRTSP_Request *req) {
     }
 
     if (!played) {
-        smolrtsp_respond(
-            ctx, SMOLRTSP_STATUS_SESSION_NOT_FOUND, "Invalid Session ID");
+        compy_respond(
+            ctx, COMPY_STATUS_SESSION_NOT_FOUND, "Invalid Session ID");
         return;
     }
 
-    smolrtsp_header(ctx, SMOLRTSP_HEADER_RANGE, "npt=now-");
-    smolrtsp_respond_ok(ctx);
+    compy_header(ctx, COMPY_HEADER_RANGE, "npt=now-");
+    compy_respond_ok(ctx);
 }
 
 static void
-Client_teardown(VSelf, SmolRTSP_Context *ctx, const SmolRTSP_Request *req) {
+Client_teardown(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     VSELF(Client);
 
     uint64_t session_id;
-    if (smolrtsp_scanf_header(
-            &req->header_map, SMOLRTSP_HEADER_SESSION, "%" SCNu64,
+    if (compy_scanf_header(
+            &req->header_map, COMPY_HEADER_SESSION, "%" SCNu64,
             &session_id) != 1) {
-        smolrtsp_respond(
-            ctx, SMOLRTSP_STATUS_BAD_REQUEST, "Malformed `Session'");
+        compy_respond(
+            ctx, COMPY_STATUS_BAD_REQUEST, "Malformed `Session'");
         return;
     }
 
@@ -407,26 +407,26 @@ Client_teardown(VSelf, SmolRTSP_Context *ctx, const SmolRTSP_Request *req) {
     }
 
     if (!teardowned) {
-        smolrtsp_respond(
-            ctx, SMOLRTSP_STATUS_SESSION_NOT_FOUND, "Invalid Session ID");
+        compy_respond(
+            ctx, COMPY_STATUS_SESSION_NOT_FOUND, "Invalid Session ID");
         return;
     }
 
-    smolrtsp_respond_ok(ctx);
+    compy_respond_ok(ctx);
 }
 
 static void
-Client_unknown(VSelf, SmolRTSP_Context *ctx, const SmolRTSP_Request *req) {
+Client_unknown(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     VSELF(Client);
 
     (void)self;
     (void)req;
 
-    smolrtsp_respond(ctx, SMOLRTSP_STATUS_METHOD_NOT_ALLOWED, "Unknown method");
+    compy_respond(ctx, COMPY_STATUS_METHOD_NOT_ALLOWED, "Unknown method");
 }
 
-static SmolRTSP_ControlFlow
-Client_before(VSelf, SmolRTSP_Context *ctx, const SmolRTSP_Request *req) {
+static Compy_ControlFlow
+Client_before(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     VSELF(Client);
 
     (void)self;
@@ -437,11 +437,11 @@ Client_before(VSelf, SmolRTSP_Context *ctx, const SmolRTSP_Request *req) {
         CharSlice99_alloca_c_str(req->start_line.method),
         CharSlice99_alloca_c_str(req->start_line.uri), req->cseq);
 
-    return SmolRTSP_ControlFlow_Continue;
+    return Compy_ControlFlow_Continue;
 }
 
 static void Client_after(
-    VSelf, ssize_t ret, SmolRTSP_Context *ctx, const SmolRTSP_Request *req) {
+    VSelf, ssize_t ret, Compy_Context *ctx, const Compy_Request *req) {
     VSELF(Client);
 
     (void)self;
@@ -453,38 +453,38 @@ static void Client_after(
     }
 }
 
-impl(SmolRTSP_Controller, Client);
+impl(Compy_Controller, Client);
 
 static int setup_transport(
-    Client *self, SmolRTSP_Context *ctx, const SmolRTSP_Request *req,
-    SmolRTSP_Transport *t) {
+    Client *self, Compy_Context *ctx, const Compy_Request *req,
+    Compy_Transport *t) {
     CharSlice99 transport_val;
-    const bool transport_found = SmolRTSP_HeaderMap_find(
-        &req->header_map, SMOLRTSP_HEADER_TRANSPORT, &transport_val);
+    const bool transport_found = Compy_HeaderMap_find(
+        &req->header_map, COMPY_HEADER_TRANSPORT, &transport_val);
     if (!transport_found) {
-        smolrtsp_respond(
-            ctx, SMOLRTSP_STATUS_BAD_REQUEST, "`Transport' not present");
+        compy_respond(
+            ctx, COMPY_STATUS_BAD_REQUEST, "`Transport' not present");
         return -1;
     }
 
-    SmolRTSP_TransportConfig config;
-    if (smolrtsp_parse_transport(&config, transport_val) == -1) {
-        smolrtsp_respond(
-            ctx, SMOLRTSP_STATUS_BAD_REQUEST, "Malformed `Transport'");
+    Compy_TransportConfig config;
+    if (compy_parse_transport(&config, transport_val) == -1) {
+        compy_respond(
+            ctx, COMPY_STATUS_BAD_REQUEST, "Malformed `Transport'");
         return -1;
     }
 
     switch (config.lower) {
-    case SmolRTSP_LowerTransport_TCP:
+    case Compy_LowerTransport_TCP:
         if (setup_tcp(ctx, t, config) == -1) {
-            smolrtsp_respond_internal_error(ctx);
+            compy_respond_internal_error(ctx);
             return -1;
         }
         break;
-    case SmolRTSP_LowerTransport_UDP:
+    case Compy_LowerTransport_UDP:
         if (setup_udp((const struct sockaddr *)&self->addr, ctx, t, config) ==
             -1) {
-            smolrtsp_respond_internal_error(ctx);
+            compy_respond_internal_error(ctx);
             return -1;
         }
         break;
@@ -494,47 +494,47 @@ static int setup_transport(
 }
 
 static int setup_tcp(
-    SmolRTSP_Context *ctx, SmolRTSP_Transport *t,
-    SmolRTSP_TransportConfig config) {
-    ifLet(config.interleaved, SmolRTSP_ChannelPair_Some, interleaved) {
-        *t = smolrtsp_transport_tcp(
-            SmolRTSP_Context_get_writer(ctx), interleaved->rtp_channel, 0);
+    Compy_Context *ctx, Compy_Transport *t,
+    Compy_TransportConfig config) {
+    ifLet(config.interleaved, Compy_ChannelPair_Some, interleaved) {
+        *t = compy_transport_tcp(
+            Compy_Context_get_writer(ctx), interleaved->rtp_channel, 0);
 
-        smolrtsp_header(
-            ctx, SMOLRTSP_HEADER_TRANSPORT,
+        compy_header(
+            ctx, COMPY_HEADER_TRANSPORT,
             "RTP/AVP/TCP;unicast;interleaved=%" PRIu8 "-%" PRIu8,
             interleaved->rtp_channel, interleaved->rtcp_channel);
         return 0;
     }
 
-    smolrtsp_respond(
-        ctx, SMOLRTSP_STATUS_BAD_REQUEST, "`interleaved' not found");
+    compy_respond(
+        ctx, COMPY_STATUS_BAD_REQUEST, "`interleaved' not found");
     return -1;
 }
 
 static int setup_udp(
-    const struct sockaddr *addr, SmolRTSP_Context *ctx, SmolRTSP_Transport *t,
-    SmolRTSP_TransportConfig config) {
+    const struct sockaddr *addr, Compy_Context *ctx, Compy_Transport *t,
+    Compy_TransportConfig config) {
 
-    ifLet(config.client_port, SmolRTSP_PortPair_Some, client_port) {
+    ifLet(config.client_port, Compy_PortPair_Some, client_port) {
         int fd;
-        if ((fd = smolrtsp_dgram_socket(
-                 addr->sa_family, smolrtsp_sockaddr_ip(addr),
+        if ((fd = compy_dgram_socket(
+                 addr->sa_family, compy_sockaddr_ip(addr),
                  client_port->rtp_port)) == -1) {
             return -1;
         }
 
-        *t = smolrtsp_transport_udp(fd);
+        *t = compy_transport_udp(fd);
 
-        smolrtsp_header(
-            ctx, SMOLRTSP_HEADER_TRANSPORT,
+        compy_header(
+            ctx, COMPY_HEADER_TRANSPORT,
             "RTP/AVP/UDP;unicast;client_port=%" PRIu16 "-%" PRIu16,
             client_port->rtp_port, client_port->rtcp_port);
         return 0;
     }
 
-    smolrtsp_respond(
-        ctx, SMOLRTSP_STATUS_BAD_REQUEST, "`client_port' not found");
+    compy_respond(
+        ctx, COMPY_STATUS_BAD_REQUEST, "`client_port' not found");
     return -1;
 }
 
@@ -542,14 +542,14 @@ static void AudioCtx_drop(VSelf) {
     VSELF(AudioCtx);
 
     event_free(self->ev);
-    VTABLE(SmolRTSP_RtpTransport, SmolRTSP_Droppable).drop(self->transport);
+    VTABLE(Compy_RtpTransport, Compy_Droppable).drop(self->transport);
     free(self);
 }
 
-impl(SmolRTSP_Droppable, AudioCtx);
+impl(Compy_Droppable, AudioCtx);
 
-static SmolRTSP_Droppable play_audio(
-    struct event_base *base, struct bufferevent *bev, SmolRTSP_RtpTransport *t,
+static Compy_Droppable play_audio(
+    struct event_base *base, struct bufferevent *bev, Compy_RtpTransport *t,
     struct event **ev, int *streams_playing) {
     AudioCtx *ctx = malloc(sizeof *ctx);
     assert(ctx);
@@ -573,7 +573,7 @@ static SmolRTSP_Droppable play_audio(
     *ev = ctx->ev;
     (*streams_playing)++;
 
-    return DYN(AudioCtx, SmolRTSP_Droppable, ctx);
+    return DYN(AudioCtx, Compy_Droppable, ctx);
 }
 
 static void send_audio_packet_cb(evutil_socket_t fd, short events, void *arg) {
@@ -582,7 +582,7 @@ static void send_audio_packet_cb(evutil_socket_t fd, short events, void *arg) {
 
     AudioCtx *ctx = arg;
 
-    if (ctx->i * AUDIO_SAMPLES_PER_PACKET >= ___media_audio_g711a_len) {
+    if (ctx->i * AUDIO_SAMPLES_PER_PACKET >= audio_g711a_len) {
         event_del(ctx->ev);
         (*ctx->streams_playing)--;
         if (0 == *ctx->streams_playing) {
@@ -591,21 +591,21 @@ static void send_audio_packet_cb(evutil_socket_t fd, short events, void *arg) {
         return;
     }
 
-    const SmolRTSP_RtpTimestamp ts =
-        SmolRTSP_RtpTimestamp_Raw(ctx->i * AUDIO_SAMPLES_PER_PACKET);
+    const Compy_RtpTimestamp ts =
+        Compy_RtpTimestamp_Raw(ctx->i * AUDIO_SAMPLES_PER_PACKET);
     const bool marker = false;
     const size_t samples_count =
-        ___media_audio_g711a_len <
+        audio_g711a_len <
                 ctx->i * AUDIO_SAMPLES_PER_PACKET + AUDIO_SAMPLES_PER_PACKET
-            ? ___media_audio_g711a_len % AUDIO_SAMPLES_PER_PACKET
+            ? audio_g711a_len % AUDIO_SAMPLES_PER_PACKET
             : AUDIO_SAMPLES_PER_PACKET;
     const U8Slice99 header = U8Slice99_empty(),
                     payload = U8Slice99_new(
-                        ___media_audio_g711a +
+                        audio_g711a +
                             ctx->i * AUDIO_SAMPLES_PER_PACKET,
                         samples_count);
 
-    if (SmolRTSP_RtpTransport_send_packet(
+    if (Compy_RtpTransport_send_packet(
             ctx->transport, ts, marker, header, payload) == -1) {
         perror("Failed to send RTP/PCMU");
     }
@@ -617,19 +617,19 @@ static void VideoCtx_drop(VSelf) {
     VSELF(VideoCtx);
 
     event_free(self->ev);
-    VTABLE(SmolRTSP_NalTransport, SmolRTSP_Droppable).drop(self->transport);
+    VTABLE(Compy_NalTransport, Compy_Droppable).drop(self->transport);
     free(self);
 }
 
-impl(SmolRTSP_Droppable, VideoCtx);
+impl(Compy_Droppable, VideoCtx);
 
-static SmolRTSP_Droppable play_video(
-    struct event_base *base, struct bufferevent *bev, SmolRTSP_RtpTransport *t,
+static Compy_Droppable play_video(
+    struct event_base *base, struct bufferevent *bev, Compy_RtpTransport *t,
     struct event **ev, int *streams_playing) {
-    U8Slice99 video = Slice99_typed_from_array(___media_video_h264);
+    U8Slice99 video = Slice99_typed_from_array(video_h264);
 
-    SmolRTSP_NalStartCodeTester start_code_tester;
-    if ((start_code_tester = smolrtsp_determine_start_code(video)) == NULL) {
+    Compy_NalStartCodeTester start_code_tester;
+    if ((start_code_tester = compy_determine_start_code(video)) == NULL) {
         fputs("Invalid video file.\n", stderr);
         abort();
     }
@@ -637,7 +637,7 @@ static SmolRTSP_Droppable play_video(
     VideoCtx *ctx = malloc(sizeof *ctx);
     assert(ctx);
     *ctx = (VideoCtx){
-        .transport = SmolRTSP_NalTransport_new(t),
+        .transport = Compy_NalTransport_new(t),
         .start_code_tester = start_code_tester,
         .timestamp = 0,
         .video = video,
@@ -659,7 +659,7 @@ static SmolRTSP_Droppable play_video(
     *ev = ctx->ev;
     (*streams_playing)++;
 
-    return DYN(VideoCtx, SmolRTSP_Droppable, ctx);
+    return DYN(VideoCtx, Compy_Droppable, ctx);
 }
 
 static void send_video_packet_cb(evutil_socket_t fd, short events, void *arg) {
@@ -699,22 +699,22 @@ again:
 }
 
 static bool send_nalu(VideoCtx *ctx) {
-    const SmolRTSP_NalUnit nalu = {
-        .header = SmolRTSP_NalHeader_H264(
-            SmolRTSP_H264NalHeader_parse(ctx->nalu_start[0])),
+    const Compy_NalUnit nalu = {
+        .header = Compy_NalHeader_H264(
+            Compy_H264NalHeader_parse(ctx->nalu_start[0])),
         .payload = U8Slice99_from_ptrdiff(ctx->nalu_start + 1, ctx->video.ptr),
     };
 
     bool au_found = false;
 
-    if (SmolRTSP_NalHeader_unit_type(nalu.header) ==
-        SMOLRTSP_H264_NAL_UNIT_AUD) {
+    if (Compy_NalHeader_unit_type(nalu.header) ==
+        COMPY_H264_NAL_UNIT_AUD) {
         ctx->timestamp += VIDEO_SAMPLE_RATE / VIDEO_FPS;
         au_found = true;
     }
 
-    if (SmolRTSP_NalTransport_send_packet(
-            ctx->transport, SmolRTSP_RtpTimestamp_Raw(ctx->timestamp), nalu) ==
+    if (Compy_NalTransport_send_packet(
+            ctx->transport, Compy_RtpTimestamp_Raw(ctx->timestamp), nalu) ==
         -1) {
         perror("Failed to send RTP/NAL");
     }

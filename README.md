@@ -1,19 +1,19 @@
 ![OpenIPC Logo](https://cdn.themactep.com/images/logo_openipc.png)
 
-# SmolRTSP
-[![CI](https://github.com/Hirrolot/smolrtsp/workflows/C/C++%20CI/badge.svg)](https://github.com/Hirrolot/smolrtsp/actions)
-[![Docs](https://img.shields.io/badge/docs-latest-blue)](https://openipc.org/smolrtsp/files.html)
+# Compy
+[![CI](https://github.com/Hirrolot/compy/workflows/C/C++%20CI/badge.svg)](https://github.com/Hirrolot/compy/actions)
+[![Docs](https://img.shields.io/badge/docs-latest-blue)](https://openipc.org/compy/files.html)
 
-SmolRTSP is a simple [RTSP 1.0] server library tailored for embedded devices, such as IP cameras. It supports both TCP and UDP, allows any payload format, and provides a convenient and flexible API.
+Compy is a simple [RTSP 1.0] server library tailored for embedded devices, such as IP cameras. It supports both TCP and UDP, allows any payload format, and provides a convenient and flexible API.
 
 [RTSP 1.0]: https://datatracker.ietf.org/doc/html/rfc2326
 
 ## Highlights
 
- - **Small.** SmolRTSP is designed for use in embedded systems (e.g., IP cameras).
- - **Unopinionated.** You can use SmolRTSP with bare POSIX sockets, [libevent], or any other network framework.
- - **Zero-copy.** SmolRTSP does not allocate or copy data while parsing.
- - **Battle-tested.** SmolRTSP is used by [Majestic], an IP camera streamer developed by [OpenIPC].
+ - **Small.** Compy is designed for use in embedded systems (e.g., IP cameras).
+ - **Unopinionated.** You can use Compy with bare POSIX sockets, [libevent], or any other network framework.
+ - **Zero-copy.** Compy does not allocate or copy data while parsing.
+ - **Battle-tested.** Compy is used by [Majestic], an IP camera streamer developed by [OpenIPC].
 
 [libevent]: https://libevent.org/
 [array slices]: https://github.com/Hirrolot/slice99
@@ -49,21 +49,21 @@ If you use CMake, the recommended way is [`FetchContent`]:
 include(FetchContent)
 
 FetchContent_Declare(
-    smolrtsp
-    URL https://github.com/OpenIPC/smolrtsp/archive/refs/tags/v1.2.3.tar.gz # v1.2.3
+    compy
+    URL https://github.com/OpenIPC/compy/archive/refs/tags/v1.2.3.tar.gz # v1.2.3
 )
 
-FetchContent_MakeAvailable(smolrtsp)
+FetchContent_MakeAvailable(compy)
 
-target_link_libraries(MyProject smolrtsp)
+target_link_libraries(MyProject compy)
 ```
 
 ### Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `SMOLRTSP_SHARED` | Build a shared library instead of static. | `OFF` |
-| `SMOLRTSP_FULL_MACRO_EXPANSION` | Show full macro expansion backtraces (**DANGEROUS**: may impair diagnostics and slow down compilation). | `OFF` |
+| `COMPY_SHARED` | Build a shared library instead of static. | `OFF` |
+| `COMPY_FULL_MACRO_EXPANSION` | Show full macro expansion backtraces (**DANGEROUS**: may impair diagnostics and slow down compilation). | `OFF` |
 
 ## Usage
 
@@ -88,9 +88,9 @@ $ ffplay rtsp://localhost
 
 ## Integration
 
-SmolRTSP is agnostic to a network backend: you can run it atop of any network/event loop framework. Currently, we support the following integrations:
+Compy is agnostic to a network backend: you can run it atop of any network/event loop framework. Currently, we support the following integrations:
 
- - [`OpenIPC/smolrtsp-libevent`](https://github.com/OpenIPC/smolrtsp-libevent) ([libevent](https://libevent.org/))
+ - [`OpenIPC/compy-libevent`](https://github.com/OpenIPC/compy-libevent) ([libevent](https://libevent.org/))
 
 Feel free to extend this list with your own integration code.
 
@@ -100,4 +100,4 @@ Feel free to extend this list with your own integration code.
  2. Update `CHANGELOG.md`.
  3. Release the project in [GitHub Releases].
 
-[GitHub Releases]: https://github.com/OpenIPC/smolrtsp/releases
+[GitHub Releases]: https://github.com/OpenIPC/compy/releases

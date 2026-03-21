@@ -1,4 +1,4 @@
-#include <smolrtsp/transport.h>
+#include <compy/transport.h>
 
 #include <assert.h>
 #include <errno.h>
@@ -14,35 +14,35 @@
 
 typedef struct {
     int fd;
-} SmolRTSP_UdpTransport;
+} Compy_UdpTransport;
 
-declImpl(SmolRTSP_Transport, SmolRTSP_UdpTransport);
+declImpl(Compy_Transport, Compy_UdpTransport);
 
-static int send_packet(SmolRTSP_UdpTransport *self, struct msghdr message);
+static int send_packet(Compy_UdpTransport *self, struct msghdr message);
 static int
 new_sockaddr(struct sockaddr *addr, int af, const void *ip, uint16_t port);
 
-SmolRTSP_Transport smolrtsp_transport_udp(int fd) {
+Compy_Transport compy_transport_udp(int fd) {
     assert(fd >= 0);
 
-    SmolRTSP_UdpTransport *self = malloc(sizeof *self);
+    Compy_UdpTransport *self = malloc(sizeof *self);
     assert(self);
     self->fd = fd;
 
-    return DYN(SmolRTSP_UdpTransport, SmolRTSP_Transport, self);
+    return DYN(Compy_UdpTransport, Compy_Transport, self);
 }
 
-static void SmolRTSP_UdpTransport_drop(VSelf) {
-    VSELF(SmolRTSP_UdpTransport);
+static void Compy_UdpTransport_drop(VSelf) {
+    VSELF(Compy_UdpTransport);
     assert(self);
 
     free(self);
 }
 
-impl(SmolRTSP_Droppable, SmolRTSP_UdpTransport);
+impl(Compy_Droppable, Compy_UdpTransport);
 
-static int SmolRTSP_UdpTransport_transmit(VSelf, SmolRTSP_IoVecSlice bufs) {
-    VSELF(SmolRTSP_UdpTransport);
+static int Compy_UdpTransport_transmit(VSelf, Compy_IoVecSlice bufs) {
+    VSELF(Compy_UdpTransport);
     assert(self);
 
     const struct msghdr msg = {
@@ -58,16 +58,16 @@ static int SmolRTSP_UdpTransport_transmit(VSelf, SmolRTSP_IoVecSlice bufs) {
     return send_packet(self, msg);
 }
 
-static bool SmolRTSP_UdpTransport_is_full(VSelf) {
-    VSELF(SmolRTSP_UdpTransport);
+static bool Compy_UdpTransport_is_full(VSelf) {
+    VSELF(Compy_UdpTransport);
     (void)self;
 
     return false;
 }
 
-impl(SmolRTSP_Transport, SmolRTSP_UdpTransport);
+impl(Compy_Transport, Compy_UdpTransport);
 
-static int send_packet(SmolRTSP_UdpTransport *self, struct msghdr message) {
+static int send_packet(Compy_UdpTransport *self, struct msghdr message) {
     // Try to retransmit a packet several times on `EMSGSIZE`. The kernel
     // will fragment an IP packet because if `IP_PMTUDISC_WANT` is set.
     size_t i = MAX_RETRANSMITS;
@@ -91,7 +91,7 @@ static int send_packet(SmolRTSP_UdpTransport *self, struct msghdr message) {
     return -1;
 }
 
-int smolrtsp_dgram_socket(int af, const void *restrict addr, uint16_t port) {
+int compy_dgram_socket(int af, const void *restrict addr, uint16_t port) {
     struct sockaddr_storage dest;
     memset(&dest, '\0', sizeof dest);
     if (new_sockaddr((struct sockaddr *)&dest, af, addr, port) == -1) {
@@ -149,7 +149,51 @@ new_sockaddr(struct sockaddr *addr, int af, const void *ip, uint16_t port) {
     }
 }
 
-void *smolrtsp_sockaddr_ip(const struct sockaddr *restrict addr) {
+int compy_recv_dgram_socket(int af, uint16_t port) {
+    struct sockaddr_storage bind_addr;
+    memset(&bind_addr, 0, sizeof bind_addr);
+
+    socklen_t addr_len;
+
+    switch (af) {
+    case AF_INET: {
+        struct sockaddr_in *a = (struct sockaddr_in *)&bind_addr;
+        a->sin_family = AF_INET;
+        a->sin_addr.s_addr = htonl(INADDR_ANY);
+        a->sin_port = htons(port);
+        addr_len = sizeof(struct sockaddr_in);
+        break;
+    }
+    case AF_INET6: {
+        struct sockaddr_in6 *a = (struct sockaddr_in6 *)&bind_addr;
+        a->sin6_family = AF_INET6;
+        a->sin6_addr = in6addr_any;
+        a->sin6_port = htons(port);
+        addr_len = sizeof(struct sockaddr_in6);
+        break;
+    }
+    default:
+        errno = EAFNOSUPPORT;
+        return -1;
+    }
+
+    int fd;
+    if ((fd = socket(af, SOCK_DGRAM, 0)) == -1) {
+        return -1;
+    }
+
+    const int reuse = 1;
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof reuse);
+
+    if (bind(fd, (const struct sockaddr *)&bind_addr, addr_len) == -1) {
+        close(fd);
+        return -1;
+    }
+
+    return fd;
+}
+
+void *compy_sockaddr_ip(const struct sockaddr *restrict addr) {
     assert(addr);
 
     switch (addr->sa_family) {

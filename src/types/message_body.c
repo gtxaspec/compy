@@ -1,36 +1,36 @@
-#include <smolrtsp/types/message_body.h>
+#include <compy/types/message_body.h>
 
 #include "parsing.h"
 
 #include <assert.h>
 
-SmolRTSP_ParseResult SmolRTSP_MessageBody_parse(
-    SmolRTSP_MessageBody *restrict self, CharSlice99 input,
+Compy_ParseResult Compy_MessageBody_parse(
+    Compy_MessageBody *restrict self, CharSlice99 input,
     size_t content_length) {
     assert(self);
 
     if (input.len < content_length) {
-        return SmolRTSP_ParseResult_partial();
+        return Compy_ParseResult_partial();
     }
 
     if (0 == content_length) {
         *self = CharSlice99_empty();
         const size_t offset = 0;
-        return SmolRTSP_ParseResult_complete(offset);
+        return Compy_ParseResult_complete(offset);
     }
 
     *self = CharSlice99_new(input.ptr, content_length);
 
-    return SmolRTSP_ParseResult_complete(content_length);
+    return Compy_ParseResult_complete(content_length);
 }
 
-SmolRTSP_MessageBody SmolRTSP_MessageBody_empty(void) {
+Compy_MessageBody Compy_MessageBody_empty(void) {
     return CharSlice99_empty();
 }
 
-bool SmolRTSP_MessageBody_eq(
-    const SmolRTSP_MessageBody *restrict lhs,
-    const SmolRTSP_MessageBody *restrict rhs) {
+bool Compy_MessageBody_eq(
+    const Compy_MessageBody *restrict lhs,
+    const Compy_MessageBody *restrict rhs) {
     assert(lhs);
     assert(rhs);
 

@@ -1,4 +1,4 @@
-#include <smolrtsp/transport.h>
+#include <compy/transport.h>
 
 #include <assert.h>
 #include <stddef.h>
@@ -9,47 +9,47 @@
 
 #include <slice99.h>
 
-#include <smolrtsp/util.h>
+#include <compy/util.h>
 
 typedef struct {
-    SmolRTSP_Writer w;
+    Compy_Writer w;
     int channel_id;
     size_t max_buffer;
-} SmolRTSP_TcpTransport;
+} Compy_TcpTransport;
 
-declImpl(SmolRTSP_Transport, SmolRTSP_TcpTransport);
+declImpl(Compy_Transport, Compy_TcpTransport);
 
-SmolRTSP_Transport smolrtsp_transport_tcp(
-    SmolRTSP_Writer w, uint8_t channel_id, size_t max_buffer) {
+Compy_Transport compy_transport_tcp(
+    Compy_Writer w, uint8_t channel_id, size_t max_buffer) {
     assert(w.self && w.vptr);
 
-    SmolRTSP_TcpTransport *self = malloc(sizeof *self);
+    Compy_TcpTransport *self = malloc(sizeof *self);
     assert(self);
 
     self->w = w;
     self->channel_id = channel_id;
     self->max_buffer = max_buffer;
 
-    return DYN(SmolRTSP_TcpTransport, SmolRTSP_Transport, self);
+    return DYN(Compy_TcpTransport, Compy_Transport, self);
 }
 
-static void SmolRTSP_TcpTransport_drop(VSelf) {
-    VSELF(SmolRTSP_TcpTransport);
+static void Compy_TcpTransport_drop(VSelf) {
+    VSELF(Compy_TcpTransport);
     assert(self);
 
     free(self);
 }
 
-impl(SmolRTSP_Droppable, SmolRTSP_TcpTransport);
+impl(Compy_Droppable, Compy_TcpTransport);
 
-static int SmolRTSP_TcpTransport_transmit(VSelf, SmolRTSP_IoVecSlice bufs) {
-    VSELF(SmolRTSP_TcpTransport);
+static int Compy_TcpTransport_transmit(VSelf, Compy_IoVecSlice bufs) {
+    VSELF(Compy_TcpTransport);
     assert(self);
 
-    const size_t total_bytes = SmolRTSP_IoVecSlice_len(bufs);
+    const size_t total_bytes = Compy_IoVecSlice_len(bufs);
 
     const uint32_t header =
-        smolrtsp_interleaved_header(self->channel_id, htons(total_bytes));
+        compy_interleaved_header(self->channel_id, htons(total_bytes));
 
     VCALL(self->w, lock);
     ssize_t ret =
@@ -73,11 +73,11 @@ static int SmolRTSP_TcpTransport_transmit(VSelf, SmolRTSP_IoVecSlice bufs) {
     return 0;
 }
 
-static bool SmolRTSP_TcpTransport_is_full(VSelf) {
-    VSELF(SmolRTSP_TcpTransport);
+static bool Compy_TcpTransport_is_full(VSelf) {
+    VSELF(Compy_TcpTransport);
     assert(self);
 
     return VCALL(self->w, filled) > self->max_buffer;
 }
 
-impl(SmolRTSP_Transport, SmolRTSP_TcpTransport);
+impl(Compy_Transport, Compy_TcpTransport);

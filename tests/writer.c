@@ -1,4 +1,4 @@
-#include <smolrtsp/writer.h>
+#include <compy/writer.h>
 
 #include <greatest.h>
 
@@ -12,7 +12,7 @@ TEST fd_writer(void) {
     const bool socketpair_ok = socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0;
     ASSERT(socketpair_ok);
 
-    SmolRTSP_Writer w = smolrtsp_fd_writer(&fds[0]);
+    Compy_Writer w = compy_fd_writer(&fds[0]);
 
     char buffer[32] = {0};
 
@@ -40,7 +40,7 @@ TEST file_writer(void) {
     FILE *tmp = tmpfile();
     assert(tmp);
 
-    SmolRTSP_Writer w = smolrtsp_file_writer(tmp);
+    Compy_Writer w = compy_file_writer(tmp);
 
     char buffer[32] = {0};
 
@@ -68,7 +68,7 @@ TEST file_writer(void) {
 TEST string_writer(void) {
     char buffer[32] = {0};
 
-    SmolRTSP_Writer w = smolrtsp_string_writer(buffer);
+    Compy_Writer w = compy_string_writer(buffer);
 
     {
         ssize_t ret = VCALL(w, write, CharSlice99_from_str("abc"));
@@ -87,7 +87,7 @@ TEST string_writer(void) {
 
 TEST write_slices(void) {
     char buffer[128] = {0};
-    SmolRTSP_Writer w = smolrtsp_string_writer(buffer);
+    Compy_Writer w = compy_string_writer(buffer);
 
     const CharSlice99 slices[] = {
         CharSlice99_from_str("abc"),
@@ -96,7 +96,7 @@ TEST write_slices(void) {
     };
 
     const ssize_t bytes_written =
-        smolrtsp_write_slices(w, SLICE99_ARRAY_LEN(slices), slices);
+        compy_write_slices(w, SLICE99_ARRAY_LEN(slices), slices);
     ASSERT_EQ(10, bytes_written);
     ASSERT_STR_EQ("abc~&* 123", buffer);
 
@@ -105,9 +105,9 @@ TEST write_slices(void) {
 
 TEST write_slices_macro(void) {
     char buffer[128] = {0};
-    SmolRTSP_Writer w = smolrtsp_string_writer(buffer);
+    Compy_Writer w = compy_string_writer(buffer);
 
-    const ssize_t bytes_written = SMOLRTSP_WRITE_SLICES(
+    const ssize_t bytes_written = COMPY_WRITE_SLICES(
         w, {
                CharSlice99_from_str("abc"),
                CharSlice99_from_str("~"),

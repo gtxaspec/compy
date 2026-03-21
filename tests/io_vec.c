@@ -1,4 +1,4 @@
-#include <smolrtsp/io_vec.h>
+#include <compy/io_vec.h>
 
 #include <greatest.h>
 
@@ -10,8 +10,8 @@ TEST io_vec_len(void) {
     };
 
     ASSERT_EQ(
-        SmolRTSP_IoVecSlice_len(
-            (SmolRTSP_IoVecSlice)Slice99_typed_from_array(bufs)),
+        Compy_IoVecSlice_len(
+            (Compy_IoVecSlice)Slice99_typed_from_array(bufs)),
         5 + 1 + 0);
 
     PASS();
@@ -20,7 +20,7 @@ TEST io_vec_len(void) {
 TEST slice_to_iovec(void) {
     uint8_t data[] = {1, 2, 3};
     const struct iovec bufs =
-        smolrtsp_slice_to_iovec((U8Slice99)Slice99_typed_from_array(data));
+        compy_slice_to_iovec((U8Slice99)Slice99_typed_from_array(data));
 
     ASSERT_EQ(bufs.iov_base, data);
     ASSERT_EQ(bufs.iov_len, sizeof data);

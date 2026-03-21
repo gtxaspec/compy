@@ -4,7 +4,7 @@
 #include <ctype.h>
 #include <string.h>
 
-SmolRTSP_ParseResult smolrtsp_match_until(
+Compy_ParseResult compy_match_until(
     CharSlice99 input, bool (*matcher)(char c, void *ctx), void *ctx) {
     assert(matcher);
 
@@ -12,14 +12,14 @@ SmolRTSP_ParseResult smolrtsp_match_until(
 
     while (!CharSlice99_is_empty(input)) {
         if (!matcher(*(char *)input.ptr, ctx)) {
-            return SmolRTSP_ParseResult_complete(offset);
+            return Compy_ParseResult_complete(offset);
         }
 
         input = CharSlice99_advance(input, 1);
         offset++;
     }
 
-    return SmolRTSP_ParseResult_partial();
+    return Compy_ParseResult_partial();
 }
 
 static bool whitespace_matcher(char c, void *ctx) {
@@ -52,8 +52,8 @@ static bool char_matcher(char c, void *ctx) {
     return c == expected;
 }
 
-SmolRTSP_ParseResult
-smolrtsp_match_until_str(CharSlice99 input, const char *restrict str) {
+Compy_ParseResult
+compy_match_until_str(CharSlice99 input, const char *restrict str) {
     assert(str);
 
     const size_t str_len = strlen(str);
@@ -63,33 +63,33 @@ smolrtsp_match_until_str(CharSlice99 input, const char *restrict str) {
 
     for (size_t i = 0; i < input.len; i++) {
         if (input.len - i < str_len) {
-            return SmolRTSP_ParseResult_partial();
+            return Compy_ParseResult_partial();
         }
 
         if (memcmp(input.ptr + i, str, str_len) == 0) {
-            return SmolRTSP_ParseResult_complete(offset + str_len);
+            return Compy_ParseResult_complete(offset + str_len);
         }
 
         offset++;
     }
 
-    return SmolRTSP_ParseResult_partial();
+    return Compy_ParseResult_partial();
 }
 
-SmolRTSP_ParseResult smolrtsp_match_until_crlf(CharSlice99 input) {
-    return smolrtsp_match_until_str(input, "\r\n");
+Compy_ParseResult compy_match_until_crlf(CharSlice99 input) {
+    return compy_match_until_str(input, "\r\n");
 }
 
-SmolRTSP_ParseResult smolrtsp_match_until_double_crlf(CharSlice99 input) {
-    return smolrtsp_match_until_str(input, "\r\n\r\n");
+Compy_ParseResult compy_match_until_double_crlf(CharSlice99 input) {
+    return compy_match_until_str(input, "\r\n\r\n");
 }
 
-SmolRTSP_ParseResult smolrtsp_match_char(CharSlice99 input, char c) {
-    return smolrtsp_match_until(input, char_matcher, &c);
+Compy_ParseResult compy_match_char(CharSlice99 input, char c) {
+    return compy_match_until(input, char_matcher, &c);
 }
 
-SmolRTSP_ParseResult
-smolrtsp_match_str(CharSlice99 input, const char *restrict str) {
+Compy_ParseResult
+compy_match_str(CharSlice99 input, const char *restrict str) {
     assert(str);
 
     const size_t str_len = strlen(str);
@@ -102,52 +102,52 @@ smolrtsp_match_str(CharSlice99 input, const char *restrict str) {
     if (!are_coinciding) {
         CharSlice99 expected = CharSlice99_from_str((char *)str),
                     actual = CharSlice99_sub(input, 0, min_len);
-        return SmolRTSP_ParseResult_Failure(
-            SmolRTSP_ParseError_StrMismatch(expected, actual));
+        return Compy_ParseResult_Failure(
+            Compy_ParseError_StrMismatch(expected, actual));
     }
 
     if (input.len < str_len) {
-        return SmolRTSP_ParseResult_partial();
+        return Compy_ParseResult_partial();
     }
 
     input = CharSlice99_advance(input, str_len);
     offset += str_len;
-    return SmolRTSP_ParseResult_complete(offset);
+    return Compy_ParseResult_complete(offset);
 }
 
-SmolRTSP_ParseResult smolrtsp_match_whitespaces(CharSlice99 input) {
-    return smolrtsp_match_until(input, whitespace_matcher, NULL);
+Compy_ParseResult compy_match_whitespaces(CharSlice99 input) {
+    return compy_match_until(input, whitespace_matcher, NULL);
 }
 
-SmolRTSP_ParseResult smolrtsp_match_non_whitespaces(CharSlice99 input) {
-    return smolrtsp_match_until(input, non_whitespace_matcher, NULL);
+Compy_ParseResult compy_match_non_whitespaces(CharSlice99 input) {
+    return compy_match_until(input, non_whitespace_matcher, NULL);
 }
 
 // TODO: refactor the following functions.
 
-SmolRTSP_ParseResult smolrtsp_match_numeric(CharSlice99 input) {
+Compy_ParseResult compy_match_numeric(CharSlice99 input) {
     if (!numeric_matcher(input.ptr[0], NULL)) {
-        return SmolRTSP_ParseResult_Failure(
-            SmolRTSP_ParseError_TypeMismatch(SmolRTSP_ParseType_Int, input));
+        return Compy_ParseResult_Failure(
+            Compy_ParseError_TypeMismatch(Compy_ParseType_Int, input));
     }
 
-    return smolrtsp_match_until(input, numeric_matcher, NULL);
+    return compy_match_until(input, numeric_matcher, NULL);
 }
 
-SmolRTSP_ParseResult smolrtsp_match_ident(CharSlice99 input) {
+Compy_ParseResult compy_match_ident(CharSlice99 input) {
     if (!ident_matcher(input.ptr[0], NULL)) {
-        return SmolRTSP_ParseResult_Failure(
-            SmolRTSP_ParseError_TypeMismatch(SmolRTSP_ParseType_Ident, input));
+        return Compy_ParseResult_Failure(
+            Compy_ParseError_TypeMismatch(Compy_ParseType_Ident, input));
     }
 
-    return smolrtsp_match_until(input, ident_matcher, NULL);
+    return compy_match_until(input, ident_matcher, NULL);
 }
 
-SmolRTSP_ParseResult smolrtsp_match_header_name(CharSlice99 input) {
+Compy_ParseResult compy_match_header_name(CharSlice99 input) {
     if (!header_name_char_matcher(input.ptr[0], NULL)) {
-        return SmolRTSP_ParseResult_Failure(SmolRTSP_ParseError_TypeMismatch(
-            SmolRTSP_ParseType_HeaderName, input));
+        return Compy_ParseResult_Failure(Compy_ParseError_TypeMismatch(
+            Compy_ParseType_HeaderName, input));
     }
 
-    return smolrtsp_match_until(input, header_name_char_matcher, NULL);
+    return compy_match_until(input, header_name_char_matcher, NULL);
 }

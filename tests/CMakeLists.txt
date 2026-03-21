@@ -42,7 +42,10 @@ add_executable(
   io_vec.c
   controller.c
   context.c
-  transport.c)
+  transport.c
+  types/rtcp.c
+  rtcp.c
+  receiver.c)
 
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
   target_compile_options(tests PRIVATE -Wall -Wextra -fsanitize=address)
@@ -52,7 +55,7 @@ endif()
 
 target_link_options(tests PRIVATE -fsanitize=address)
 
-target_link_libraries(tests smolrtsp)
+target_link_libraries(tests compy)
 target_include_directories(tests PRIVATE ${greatest_SOURCE_DIR})
 
 set_target_properties(tests PROPERTIES C_STANDARD 99 C_STANDARD_REQUIRED ON)

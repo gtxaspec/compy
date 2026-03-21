@@ -1,4 +1,4 @@
-#include <smolrtsp/writer.h>
+#include <compy/writer.h>
 
 #include <assert.h>
 #include <stdio.h>
@@ -57,9 +57,9 @@ static int FileWriter_writef(VSelf, const char *restrict fmt, ...) {
     return ret;
 }
 
-impl(SmolRTSP_Writer, FileWriter);
+impl(Compy_Writer, FileWriter);
 
-SmolRTSP_Writer smolrtsp_file_writer(FILE *stream) {
+Compy_Writer compy_file_writer(FILE *stream) {
     assert(stream);
-    return DYN(FileWriter, SmolRTSP_Writer, stream);
+    return DYN(FileWriter, Compy_Writer, stream);
 }

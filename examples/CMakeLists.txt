@@ -7,20 +7,10 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 
 find_package(LibEvent REQUIRED)
 
-include(FetchContent)
+add_executable(server server.c compy-libevent.c)
 
-FetchContent_Declare(
-    smolrtsp-libevent
-    GIT_REPOSITORY https://github.com/OpenIPC/smolrtsp-libevent
-    GIT_TAG 7451e74
-)
-
-FetchContent_MakeAvailable(smolrtsp-libevent)
-
-add_executable(server server.c)
-
-target_link_libraries(server smolrtsp smolrtsp-libevent ${LIBEVENT_LIBRARIES})
-target_include_directories(server PRIVATE ${LIBEVENT_INCLUDE_DIR})
+target_link_libraries(server compy ${LIBEVENT_LIBRARIES})
+target_include_directories(server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${LIBEVENT_INCLUDE_DIR})
 set_target_properties(server PROPERTIES C_STANDARD 99 C_STANDARD_REQUIRED ON)
 
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
@@ -31,5 +21,7 @@ endif()
 
 target_link_options(server PRIVATE -fsanitize=address)
 
-execute_process(COMMAND xxd -i ../media/audio.g711a ../media/audio.g711a.h)
-execute_process(COMMAND xxd -i ../media/video.h264 ../media/video.h264.h)
+execute_process(COMMAND xxd -i ../media/audio.g711a ../media/audio.g711a.h
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+execute_process(COMMAND xxd -i ../media/video.h264 ../media/video.h264.h
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

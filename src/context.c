@@ -1,51 +1,51 @@
-#include <smolrtsp/context.h>
+#include <compy/context.h>
 
-#include <smolrtsp/types/header_map.h>
-#include <smolrtsp/types/response.h>
+#include <compy/types/header_map.h>
+#include <compy/types/response.h>
 
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-struct SmolRTSP_Context {
-    SmolRTSP_Writer writer;
+struct Compy_Context {
+    Compy_Writer writer;
     uint32_t cseq;
-    SmolRTSP_HeaderMap header_map;
-    SmolRTSP_MessageBody body;
+    Compy_HeaderMap header_map;
+    Compy_MessageBody body;
     ssize_t ret;
 };
 
-SmolRTSP_Context *SmolRTSP_Context_new(SmolRTSP_Writer w, uint32_t cseq) {
+Compy_Context *Compy_Context_new(Compy_Writer w, uint32_t cseq) {
     assert(w.self && w.vptr);
 
-    SmolRTSP_Context *self = malloc(sizeof *self);
+    Compy_Context *self = malloc(sizeof *self);
     assert(self);
     self->writer = w;
     self->cseq = cseq;
-    self->header_map = SmolRTSP_HeaderMap_empty();
-    self->body = SmolRTSP_MessageBody_empty();
+    self->header_map = Compy_HeaderMap_empty();
+    self->body = Compy_MessageBody_empty();
     self->ret = 0;
 
     return self;
 }
 
-SmolRTSP_Writer SmolRTSP_Context_get_writer(const SmolRTSP_Context *ctx) {
+Compy_Writer Compy_Context_get_writer(const Compy_Context *ctx) {
     assert(ctx);
     return ctx->writer;
 }
 
-uint32_t SmolRTSP_Context_get_cseq(const SmolRTSP_Context *ctx) {
+uint32_t Compy_Context_get_cseq(const Compy_Context *ctx) {
     assert(ctx);
     return ctx->cseq;
 }
 
-ssize_t SmolRTSP_Context_get_ret(const SmolRTSP_Context *ctx) {
+ssize_t Compy_Context_get_ret(const Compy_Context *ctx) {
     assert(ctx);
     return ctx->ret;
 }
 
-void smolrtsp_vheader(
-    SmolRTSP_Context *ctx, CharSlice99 key, const char *restrict fmt,
+void compy_vheader(
+    Compy_Context *ctx, CharSlice99 key, const char *restrict fmt,
     va_list list) {
     assert(ctx);
     assert(fmt);
@@ -62,32 +62,32 @@ void smolrtsp_vheader(
         vsprintf(value, fmt, list);
     assert(space_required == bytes_written);
 
-    const SmolRTSP_Header h = {key, CharSlice99_from_str(value)};
-    SmolRTSP_HeaderMap_append(&ctx->header_map, h);
+    const Compy_Header h = {key, CharSlice99_from_str(value)};
+    Compy_HeaderMap_append(&ctx->header_map, h);
 }
 
-void smolrtsp_header(
-    SmolRTSP_Context *ctx, CharSlice99 key, const char *restrict fmt, ...) {
+void compy_header(
+    Compy_Context *ctx, CharSlice99 key, const char *restrict fmt, ...) {
     assert(ctx);
     assert(fmt);
 
     va_list ap;
     va_start(ap, fmt);
-    smolrtsp_vheader(ctx, key, fmt, ap);
+    compy_vheader(ctx, key, fmt, ap);
     va_end(ap);
 }
 
-void smolrtsp_body(SmolRTSP_Context *ctx, SmolRTSP_MessageBody body) {
+void compy_body(Compy_Context *ctx, Compy_MessageBody body) {
     assert(ctx);
     ctx->body = body;
 }
 
-ssize_t smolrtsp_respond(
-    SmolRTSP_Context *ctx, SmolRTSP_StatusCode code, const char *reason) {
+ssize_t compy_respond(
+    Compy_Context *ctx, Compy_StatusCode code, const char *reason) {
     assert(ctx);
     assert(reason);
 
-    const SmolRTSP_Response response = {
+    const Compy_Response response = {
         .start_line =
             {
                 .version = {.major = 1, .minor = 0},
@@ -99,23 +99,23 @@ ssize_t smolrtsp_respond(
         .cseq = ctx->cseq,
     };
 
-    ctx->ret = SmolRTSP_Response_serialize(&response, ctx->writer);
+    ctx->ret = Compy_Response_serialize(&response, ctx->writer);
     return ctx->ret;
 }
 
-ssize_t smolrtsp_respond_ok(SmolRTSP_Context *ctx) {
+ssize_t compy_respond_ok(Compy_Context *ctx) {
     assert(ctx);
-    return smolrtsp_respond(ctx, SMOLRTSP_STATUS_OK, "OK");
+    return compy_respond(ctx, COMPY_STATUS_OK, "OK");
 }
 
-ssize_t smolrtsp_respond_internal_error(SmolRTSP_Context *ctx) {
+ssize_t compy_respond_internal_error(Compy_Context *ctx) {
     assert(ctx);
-    return smolrtsp_respond(
-        ctx, SMOLRTSP_STATUS_INTERNAL_SERVER_ERROR, "Internal error");
+    return compy_respond(
+        ctx, COMPY_STATUS_INTERNAL_SERVER_ERROR, "Internal error");
 }
 
-void SmolRTSP_Context_drop(VSelf) {
-    VSELF(SmolRTSP_Context);
+void Compy_Context_drop(VSelf) {
+    VSELF(Compy_Context);
     assert(self);
 
     for (size_t i = 0; i < self->header_map.len; i++) {
@@ -125,4 +125,4 @@ void SmolRTSP_Context_drop(VSelf) {
     free(self);
 }
 
-implExtern(SmolRTSP_Droppable, SmolRTSP_Context);
+implExtern(Compy_Droppable, Compy_Context);

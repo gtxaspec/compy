@@ -1,9 +1,9 @@
-#include <smolrtsp/types/request_uri.h>
+#include <compy/types/request_uri.h>
 
 #include "test_util.h"
 #include <greatest.h>
 
-DEF_TEST_PARSE(SmolRTSP_RequestUri)
+DEF_TEST_PARSE(Compy_RequestUri)
 
 TEST parse_request_uri(void) {
     TEST_PARSE(

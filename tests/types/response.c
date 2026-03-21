@@ -1,25 +1,25 @@
-#include <smolrtsp/types/response.h>
+#include <compy/types/response.h>
 
-#define TEST_PARSE_INIT_TYPE(result) result = SmolRTSP_Response_uninit()
+#define TEST_PARSE_INIT_TYPE(result) result = Compy_Response_uninit()
 
 #include "test_util.h"
 #include <greatest.h>
 
-DEF_TEST_PARSE(SmolRTSP_Response)
+DEF_TEST_PARSE(Compy_Response)
 
 TEST parse_response(void) {
-    const SmolRTSP_Response expected = {
+    const Compy_Response expected = {
         .start_line =
             {
                 .version = {.major = 1, .minor = 1},
-                .code = SMOLRTSP_STATUS_OK,
+                .code = COMPY_STATUS_OK,
                 .reason = CharSlice99_from_str("OK"),
             },
-        .header_map = SmolRTSP_HeaderMap_from_array({
-            {SMOLRTSP_HEADER_C_SEQ, CharSlice99_from_str("123")},
-            {SMOLRTSP_HEADER_CONTENT_LENGTH, CharSlice99_from_str("10")},
-            {SMOLRTSP_HEADER_ACCEPT_LANGUAGE, CharSlice99_from_str("English")},
-            {SMOLRTSP_HEADER_CONTENT_TYPE,
+        .header_map = Compy_HeaderMap_from_array({
+            {COMPY_HEADER_C_SEQ, CharSlice99_from_str("123")},
+            {COMPY_HEADER_CONTENT_LENGTH, CharSlice99_from_str("10")},
+            {COMPY_HEADER_ACCEPT_LANGUAGE, CharSlice99_from_str("English")},
+            {COMPY_HEADER_CONTENT_TYPE,
              CharSlice99_from_str("application/octet-stream")},
         }),
         .body = CharSlice99_from_str("0123456789"),
@@ -41,17 +41,17 @@ TEST parse_response(void) {
 TEST serialize_response(void) {
     char buffer[500] = {0};
 
-    const SmolRTSP_Response response = {
+    const Compy_Response response = {
         .start_line =
             {
                 .version = {1, 0},
-                .code = SMOLRTSP_STATUS_OK,
+                .code = COMPY_STATUS_OK,
                 .reason = CharSlice99_from_str("OK"),
             },
-        .header_map = SmolRTSP_HeaderMap_from_array({
-            {SMOLRTSP_HEADER_DATE,
+        .header_map = Compy_HeaderMap_from_array({
+            {COMPY_HEADER_DATE,
              CharSlice99_from_str("Thu, 05 Jun 1997 18:57:19 GMT")},
-            {SMOLRTSP_HEADER_CONTENT_TYPE,
+            {COMPY_HEADER_CONTENT_TYPE,
              CharSlice99_from_str("application/octet-stream")},
         }),
         .body = CharSlice99_from_str("1234567890"),
@@ -59,7 +59,7 @@ TEST serialize_response(void) {
     };
 
     const ssize_t ret =
-        SmolRTSP_Response_serialize(&response, smolrtsp_string_writer(buffer));
+        Compy_Response_serialize(&response, compy_string_writer(buffer));
 
     const char *expected =
         "RTSP/1.0 200 OK\r\n"
