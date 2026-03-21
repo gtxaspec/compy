@@ -352,7 +352,14 @@ Client_setup(VSelf, Compy_Context *ctx, const Compy_Request *req) {
 
         stream->session_id = session_id;
     } else {
-        stream->session_id = (uint64_t)rand();
+        {
+            uint64_t sid;
+            FILE *f = fopen("/dev/urandom", "r");
+            assert(f);
+            assert(fread(&sid, sizeof sid, 1, f) == 1);
+            fclose(f);
+            stream->session_id = sid;
+        }
     }
 
     if (AUDIO_STREAM_ID == stream_id) {
@@ -483,7 +490,7 @@ Client_unknown(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     (void)self;
     (void)req;
 
-    compy_respond(ctx, COMPY_STATUS_METHOD_NOT_ALLOWED, "Unknown method");
+    compy_respond(ctx, COMPY_STATUS_NOT_IMPLEMENTED, "Not Implemented");
 }
 
 static Compy_ControlFlow
