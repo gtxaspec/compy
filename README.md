@@ -44,7 +44,6 @@ A small, portable [RTSP 1.0] server library in C99, designed for embedded IP cam
    - [x] mbedTLS (3.6.x and 4.0)
    - [x] BearSSL (SRTP crypto only; TLS server setup requires additional PEM parsing)
  - Known limitations:
-   - SRTP/SRTCP decrypt (receive-side) is not implemented — send-only
    - BearSSL TLS server context is stubbed (SRTP operations work)
 
 [RFC 2326]: https://datatracker.ietf.org/doc/html/rfc2326
