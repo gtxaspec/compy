@@ -20,7 +20,9 @@ void compy_dispatch(
                           describe = COMPY_METHOD_DESCRIBE,
                           setup = COMPY_METHOD_SETUP,
                           play = COMPY_METHOD_PLAY,
-                          teardown = COMPY_METHOD_TEARDOWN;
+                          pause_m = COMPY_METHOD_PAUSE,
+                          teardown = COMPY_METHOD_TEARDOWN,
+                          get_parameter = COMPY_METHOD_GET_PARAMETER;
 
     if (Compy_Method_eq(&method, &options)) {
         VCALL(controller, options, ctx, req);
@@ -30,8 +32,12 @@ void compy_dispatch(
         VCALL(controller, setup, ctx, req);
     } else if (Compy_Method_eq(&method, &play)) {
         VCALL(controller, play, ctx, req);
+    } else if (Compy_Method_eq(&method, &pause_m)) {
+        VCALL(controller, pause_method, ctx, req);
     } else if (Compy_Method_eq(&method, &teardown)) {
         VCALL(controller, teardown, ctx, req);
+    } else if (Compy_Method_eq(&method, &get_parameter)) {
+        VCALL(controller, get_parameter, ctx, req);
     } else {
         VCALL(controller, unknown, ctx, req);
     }

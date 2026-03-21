@@ -271,7 +271,8 @@ Client_options(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     (void)req;
 
     compy_header(
-        ctx, COMPY_HEADER_PUBLIC, "DESCRIBE, SETUP, TEARDOWN, PLAY");
+        ctx, COMPY_HEADER_PUBLIC,
+        "DESCRIBE, SETUP, PLAY, PAUSE, TEARDOWN, GET_PARAMETER");
     compy_respond_ok(ctx);
 }
 
@@ -451,6 +452,27 @@ Client_teardown(VSelf, Compy_Context *ctx, const Compy_Request *req) {
         return;
     }
 
+    compy_respond_ok(ctx);
+}
+
+static void
+Client_pause_method(VSelf, Compy_Context *ctx, const Compy_Request *req) {
+    VSELF(Client);
+
+    (void)self;
+    (void)req;
+
+    compy_respond_ok(ctx);
+}
+
+static void
+Client_get_parameter(VSelf, Compy_Context *ctx, const Compy_Request *req) {
+    VSELF(Client);
+
+    (void)self;
+    (void)req;
+
+    /* Keepalive — just respond 200 OK */
     compy_respond_ok(ctx);
 }
 

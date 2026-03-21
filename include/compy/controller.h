@@ -47,7 +47,7 @@ typedef enum {
         const Compy_Request *req)                                           \
                                                                                \
     /*                                                                         \
-     * Handles `OPTIONS` as defined in                                         \
+     * Handles `DESCRIBE` as defined in                                        \
      * <https://datatracker.ietf.org/doc/html/rfc2326#section-10.2>.           \
      */                                                                        \
     vfunc99(                                                                   \
@@ -55,7 +55,7 @@ typedef enum {
         const Compy_Request *req)                                           \
                                                                                \
     /*                                                                         \
-     * Handles `OPTIONS` as defined in                                         \
+     * Handles `SETUP` as defined in                                           \
      * <https://datatracker.ietf.org/doc/html/rfc2326#section-10.4>.           \
      */                                                                        \
     vfunc99(                                                                   \
@@ -63,7 +63,7 @@ typedef enum {
         const Compy_Request *req)                                           \
                                                                                \
     /*                                                                         \
-     * Handles `OPTIONS` as defined in                                         \
+     * Handles `PLAY` as defined in                                            \
      * <https://datatracker.ietf.org/doc/html/rfc2326#section-10.5>.           \
      */                                                                        \
     vfunc99(                                                                   \
@@ -71,7 +71,15 @@ typedef enum {
         const Compy_Request *req)                                           \
                                                                                \
     /*                                                                         \
-     * Handles `OPTIONS` as defined in                                         \
+     * Handles `PAUSE` as defined in                                           \
+     * <https://datatracker.ietf.org/doc/html/rfc2326#section-10.6>.           \
+     */                                                                        \
+    vfunc99(                                                                   \
+        void, pause_method, VSelf99, Compy_Context *ctx,                    \
+        const Compy_Request *req)                                           \
+                                                                               \
+    /*                                                                         \
+     * Handles `TEARDOWN` as defined in                                        \
      * <https://datatracker.ietf.org/doc/html/rfc2326#section-10.7>.           \
      */                                                                        \
     vfunc99(                                                                   \
@@ -79,7 +87,15 @@ typedef enum {
         const Compy_Request *req)                                           \
                                                                                \
     /*                                                                         \
-     * Handles a command that is neither of the above.                         \
+     * Handles `GET_PARAMETER` as defined in                                   \
+     * <https://datatracker.ietf.org/doc/html/rfc2326#section-10.8>.           \
+     */                                                                        \
+    vfunc99(                                                                   \
+        void, get_parameter, VSelf99, Compy_Context *ctx,                   \
+        const Compy_Request *req)                                           \
+                                                                               \
+    /*                                                                         \
+     * Handles a command that is not one of the above.                         \
      */                                                                        \
     vfunc99(                                                                   \
         void, unknown, VSelf99, Compy_Context *ctx,                         \

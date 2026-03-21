@@ -6,11 +6,12 @@
 #include <stdbool.h>
 
 static Compy_Request options_req, describe_req, setup_req, play_req,
-    teardown_req, abracadabra_req;
+    pause_method_req, teardown_req, get_parameter_req, abracadabra_req;
 
 typedef struct {
     bool options_completed, describe_completed, setup_completed, play_completed,
-        teardown_completed, abracadabra_completed;
+        pause_method_completed, teardown_completed, get_parameter_completed,
+        abracadabra_completed;
     int before_invoked_n, after_invoked_n;
     bool dropped;
 } Client;
@@ -69,6 +70,28 @@ Client_play(VSelf, Compy_Context *ctx, const Compy_Request *req) {
 }
 
 static void
+Client_pause_method(VSelf, Compy_Context *ctx, const Compy_Request *req) {
+    VSELF(Client);
+
+    self->pause_method_completed = true;
+    assert(req == &pause_method_req);
+    compy_header(ctx, HEADER_TEST_METHOD, "pause_method");
+    const ssize_t ret = compy_respond_ok(ctx);
+    assert(ret > 0);
+}
+
+static void
+Client_get_parameter(VSelf, Compy_Context *ctx, const Compy_Request *req) {
+    VSELF(Client);
+
+    self->get_parameter_completed = true;
+    assert(req == &get_parameter_req);
+    compy_header(ctx, HEADER_TEST_METHOD, "get_parameter");
+    const ssize_t ret = compy_respond_ok(ctx);
+    assert(ret > 0);
+}
+
+static void
 Client_teardown(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     VSELF(Client);
 
@@ -120,13 +143,16 @@ impl(Compy_Controller, Client);
 
 TEST dispatch(void) {
     options_req.cseq = describe_req.cseq = setup_req.cseq = play_req.cseq =
-        teardown_req.cseq = abracadabra_req.cseq = 123;
+        pause_method_req.cseq = teardown_req.cseq = get_parameter_req.cseq =
+            abracadabra_req.cseq = 123;
 
     options_req.start_line.method = COMPY_METHOD_OPTIONS;
     describe_req.start_line.method = COMPY_METHOD_DESCRIBE;
     setup_req.start_line.method = COMPY_METHOD_SETUP;
     play_req.start_line.method = COMPY_METHOD_PLAY;
+    pause_method_req.start_line.method = COMPY_METHOD_PAUSE;
     teardown_req.start_line.method = COMPY_METHOD_TEARDOWN;
+    get_parameter_req.start_line.method = COMPY_METHOD_GET_PARAMETER;
     abracadabra_req.start_line.method = CharSlice99_from_str("Abracadabra");
 
     char buffer[256] = {0};
@@ -137,7 +163,9 @@ TEST dispatch(void) {
         .describe_completed = false,
         .setup_completed = false,
         .play_completed = false,
+        .pause_method_completed = false,
         .teardown_completed = false,
+        .get_parameter_completed = false,
         .abracadabra_completed = false,
         .before_invoked_n = 0,
         .after_invoked_n = 0,
@@ -169,7 +197,9 @@ TEST dispatch(void) {
     CHECK(describe);
     CHECK(setup);
     CHECK(play);
+    CHECK(pause_method);
     CHECK(teardown);
+    CHECK(get_parameter);
     CHECK(abracadabra);
 
 #undef CHECK
