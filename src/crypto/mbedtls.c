@@ -15,14 +15,26 @@
  * and entropy from the public API. Version 3.x requires explicit RNG
  * setup.
  */
-#if MBEDTLS_VERSION_NUMBER < 0x04000000
+/*
+ * mbedTLS version handling:
+ *   2.x: legacy crypto, pk_parse_keyfile(ctx, path, pwd) — 3 args
+ *   3.x: legacy crypto, pk_parse_keyfile(ctx, path, pwd, rng, rng_ctx) — 5 args
+ *   4.x: PSA Crypto, pk_parse_keyfile(ctx, path, pwd) — 3 args
+ */
+#if MBEDTLS_VERSION_NUMBER >= 0x04000000
+#include <psa/crypto.h>
+#else
+/* mbedTLS 2.x and 3.x use legacy crypto APIs */
 #include <mbedtls/aes.h>
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/entropy.h>
 #include <mbedtls/md.h>
-#define COMPY_MBEDTLS_3X
-#else
-#include <psa/crypto.h>
+#define COMPY_MBEDTLS_LEGACY
+#endif
+
+/* Only 3.x added RNG param to pk_parse_keyfile */
+#if MBEDTLS_VERSION_NUMBER >= 0x03000000 && MBEDTLS_VERSION_NUMBER < 0x04000000
+#define COMPY_MBEDTLS_PK_NEEDS_RNG
 #endif
 
 /* --- TLS operations --- */
@@ -31,7 +43,7 @@ typedef struct {
     mbedtls_ssl_config conf;
     mbedtls_x509_crt cert;
     mbedtls_pk_context pkey;
-#ifdef COMPY_MBEDTLS_3X
+#ifdef COMPY_MBEDTLS_LEGACY
     mbedtls_entropy_context entropy;
     mbedtls_ctr_drbg_context ctr_drbg;
 #endif
@@ -44,7 +56,7 @@ typedef struct {
 
 static Compy_CryptoTlsCtx *
 mbed_ctx_new(const char *cert_path, const char *key_path) {
-#ifndef COMPY_MBEDTLS_3X
+#ifndef COMPY_MBEDTLS_LEGACY
     /* mbedTLS 4.x: PSA must be initialized before any crypto ops */
     psa_crypto_init();
 #endif
@@ -57,7 +69,7 @@ mbed_ctx_new(const char *cert_path, const char *key_path) {
     mbedtls_x509_crt_init(&self->cert);
     mbedtls_pk_init(&self->pkey);
 
-#ifdef COMPY_MBEDTLS_3X
+#ifdef COMPY_MBEDTLS_LEGACY
     mbedtls_entropy_init(&self->entropy);
     mbedtls_ctr_drbg_init(&self->ctr_drbg);
 
@@ -71,13 +83,14 @@ mbed_ctx_new(const char *cert_path, const char *key_path) {
     if (mbedtls_x509_crt_parse_file(&self->cert, cert_path) != 0)
         goto fail;
 
-#ifdef COMPY_MBEDTLS_3X
+#ifdef COMPY_MBEDTLS_PK_NEEDS_RNG
+    /* mbedTLS 3.x: pk_parse_keyfile requires RNG args */
     if (mbedtls_pk_parse_keyfile(
             &self->pkey, key_path, NULL, mbedtls_ctr_drbg_random,
             &self->ctr_drbg) != 0)
         goto fail;
 #else
-    /* mbedTLS 4.x: RNG handled internally by PSA */
+    /* mbedTLS 2.x and 4.x: 3-arg form */
     if (mbedtls_pk_parse_keyfile(&self->pkey, key_path, NULL) != 0)
         goto fail;
 #endif
@@ -88,7 +101,7 @@ mbed_ctx_new(const char *cert_path, const char *key_path) {
         goto fail;
     }
 
-#ifdef COMPY_MBEDTLS_3X
+#ifdef COMPY_MBEDTLS_LEGACY
     mbedtls_ssl_conf_rng(&self->conf, mbedtls_ctr_drbg_random, &self->ctr_drbg);
 #endif
     mbedtls_ssl_conf_ca_chain(&self->conf, self->cert.next, NULL);
@@ -102,7 +115,7 @@ fail:
     mbedtls_pk_free(&self->pkey);
     mbedtls_x509_crt_free(&self->cert);
     mbedtls_ssl_config_free(&self->conf);
-#ifdef COMPY_MBEDTLS_3X
+#ifdef COMPY_MBEDTLS_LEGACY
     mbedtls_entropy_free(&self->entropy);
     mbedtls_ctr_drbg_free(&self->ctr_drbg);
 #endif
@@ -116,7 +129,7 @@ static void mbed_ctx_free(Compy_CryptoTlsCtx *ctx) {
         mbedtls_pk_free(&c->pkey);
         mbedtls_x509_crt_free(&c->cert);
         mbedtls_ssl_config_free(&c->conf);
-#ifdef COMPY_MBEDTLS_3X
+#ifdef COMPY_MBEDTLS_LEGACY
         mbedtls_entropy_free(&c->entropy);
         mbedtls_ctr_drbg_free(&c->ctr_drbg);
 #endif
@@ -195,7 +208,7 @@ static size_t mbed_pending(Compy_CryptoTlsConn *conn) {
 
 static void
 mbed_aes128_ecb(const uint8_t key[16], const uint8_t in[16], uint8_t out[16]) {
-#ifdef COMPY_MBEDTLS_3X
+#ifdef COMPY_MBEDTLS_LEGACY
     mbedtls_aes_context aes;
     mbedtls_aes_init(&aes);
     mbedtls_aes_setkey_enc(&aes, key, 128);
@@ -221,7 +234,7 @@ mbed_aes128_ecb(const uint8_t key[16], const uint8_t in[16], uint8_t out[16]) {
 static void mbed_hmac_sha1(
     const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len,
     uint8_t out[20]) {
-#ifdef COMPY_MBEDTLS_3X
+#ifdef COMPY_MBEDTLS_LEGACY
     mbedtls_md_hmac(
         mbedtls_md_info_from_type(MBEDTLS_MD_SHA1), key, key_len, data,
         data_len, out);
@@ -243,7 +256,7 @@ static void mbed_hmac_sha1(
 }
 
 static int mbed_random_bytes(uint8_t *buf, size_t len) {
-#ifdef COMPY_MBEDTLS_3X
+#ifdef COMPY_MBEDTLS_LEGACY
     mbedtls_entropy_context entropy;
     mbedtls_ctr_drbg_context ctr_drbg;
     mbedtls_entropy_init(&entropy);

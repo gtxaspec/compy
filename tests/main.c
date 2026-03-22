@@ -3,7 +3,7 @@
 // Check that the main header compiles well.
 #include <compy.h>
 
-#define COMPY_SUITE(name)                                                   \
+#define COMPY_SUITE(name)                                                      \
     extern void name(void);                                                    \
     RUN_SUITE(name)
 

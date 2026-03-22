@@ -31,8 +31,7 @@ TEST sdp_printf(void) {
     const char *expected = "a=abc 123 @ def\r\n";
 
     const ssize_t ret = compy_sdp_printf(
-        compy_string_writer(buffer), COMPY_SDP_ATTR, "abc %d @ %s", 123,
-        "def");
+        compy_string_writer(buffer), COMPY_SDP_ATTR, "abc %d @ %s", 123, "def");
     ASSERT_EQ((ssize_t)strlen(expected), ret);
     ASSERT_STR_EQ(expected, buffer);
 

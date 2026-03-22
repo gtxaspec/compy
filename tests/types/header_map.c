@@ -12,10 +12,10 @@
 DEF_TEST_PARSE(Compy_HeaderMap)
 
 #define HEADER_MAP                                                             \
-    Compy_HeaderMap_from_array({                                            \
-        {COMPY_HEADER_CONTENT_LENGTH, CharSlice99_from_str("10")},          \
-        {COMPY_HEADER_ACCEPT_LANGUAGE, CharSlice99_from_str("English")},    \
-        {COMPY_HEADER_CONTENT_TYPE,                                         \
+    Compy_HeaderMap_from_array({                                               \
+        {COMPY_HEADER_CONTENT_LENGTH, CharSlice99_from_str("10")},             \
+        {COMPY_HEADER_ACCEPT_LANGUAGE, CharSlice99_from_str("English")},       \
+        {COMPY_HEADER_CONTENT_TYPE,                                            \
          CharSlice99_from_str("application/octet-stream")},                    \
     })
 
@@ -66,8 +66,7 @@ TEST find(void) {
 TEST contains_key(void) {
     const Compy_HeaderMap map = HEADER_MAP;
 
-    ASSERT(
-        Compy_HeaderMap_contains_key(&map, COMPY_HEADER_CONTENT_LENGTH));
+    ASSERT(Compy_HeaderMap_contains_key(&map, COMPY_HEADER_CONTENT_LENGTH));
     ASSERT(!Compy_HeaderMap_contains_key(&map, COMPY_HEADER_ALLOW));
 
     PASS();
@@ -108,8 +107,7 @@ TEST scanf_header(void) {
     ASSERT_EQ(0, ret);
 
     char auth[32] = {0};
-    ret = compy_scanf_header(
-        &map, COMPY_HEADER_WWW_AUTHENTICATE, "%s", auth);
+    ret = compy_scanf_header(&map, COMPY_HEADER_WWW_AUTHENTICATE, "%s", auth);
     ASSERT_EQ(-1, ret);
 
     PASS();

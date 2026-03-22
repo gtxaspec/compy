@@ -40,7 +40,7 @@ TEST write_fu_header(void) {
 
 #define CHECK(is_first_fragment, is_last_fragment, ...)                        \
     do {                                                                       \
-        Compy_H265NalHeader_write_fu_header(                                \
+        Compy_H265NalHeader_write_fu_header(                                   \
             h, buffer, is_first_fragment, is_last_fragment);                   \
         ASSERT_MEM_EQ(((uint8_t[]){__VA_ARGS__}), buffer, sizeof buffer);      \
     } while (0)

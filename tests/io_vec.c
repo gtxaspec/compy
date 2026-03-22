@@ -10,8 +10,7 @@ TEST io_vec_len(void) {
     };
 
     ASSERT_EQ(
-        Compy_IoVecSlice_len(
-            (Compy_IoVecSlice)Slice99_typed_from_array(bufs)),
+        Compy_IoVecSlice_len((Compy_IoVecSlice)Slice99_typed_from_array(bufs)),
         5 + 1 + 0);
 
     PASS();

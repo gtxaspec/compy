@@ -47,8 +47,7 @@ Client_describe(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     assert(ret > 0);
 }
 
-static void
-Client_setup(VSelf, Compy_Context *ctx, const Compy_Request *req) {
+static void Client_setup(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     VSELF(Client);
 
     self->setup_completed = true;
@@ -58,8 +57,7 @@ Client_setup(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     assert(ret > 0);
 }
 
-static void
-Client_play(VSelf, Compy_Context *ctx, const Compy_Request *req) {
+static void Client_play(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     VSELF(Client);
 
     self->play_completed = true;
@@ -127,8 +125,8 @@ Client_before(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     return Compy_ControlFlow_Continue;
 }
 
-static void Client_after(
-    VSelf, ssize_t ret, Compy_Context *ctx, const Compy_Request *req) {
+static void
+Client_after(VSelf, ssize_t ret, Compy_Context *ctx, const Compy_Request *req) {
     VSELF(Client);
 
     (void)ctx;
@@ -178,7 +176,7 @@ TEST dispatch(void) {
 
 #define CHECK(method)                                                          \
     do {                                                                       \
-        compy_dispatch(sdp, controller, &method##_req);                     \
+        compy_dispatch(sdp, controller, &method##_req);                        \
         before_after_invoked_n++;                                              \
         ASSERT(client.method##_completed);                                     \
         ASSERT_EQ(before_after_invoked_n, client.before_invoked_n);            \

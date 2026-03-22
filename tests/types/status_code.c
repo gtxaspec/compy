@@ -16,8 +16,8 @@ TEST parse_status_code(void) {
 
     ASSERT(Compy_ParseResult_is_failure(
         Compy_StatusCode_parse(&result, CharSlice99_from_str("blah"))));
-    ASSERT(Compy_ParseResult_is_failure(Compy_StatusCode_parse(
-        &result, CharSlice99_from_str("~ 2424 blah"))));
+    ASSERT(Compy_ParseResult_is_failure(
+        Compy_StatusCode_parse(&result, CharSlice99_from_str("~ 2424 blah"))));
 
     PASS();
 }

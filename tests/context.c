@@ -51,10 +51,9 @@ TEST respond(void) {
     Compy_Context *ctx = Compy_Context_new(w, cseq);
 
     compy_header(
-        ctx, COMPY_HEADER_DATE, "%s, 05 Jun 1997 %d:%d:%d GMT", "Thu", 18,
-        57, 19);
-    compy_header(
-        ctx, COMPY_HEADER_CONTENT_TYPE, "application/octet-stream");
+        ctx, COMPY_HEADER_DATE, "%s, 05 Jun 1997 %d:%d:%d GMT", "Thu", 18, 57,
+        19);
+    compy_header(ctx, COMPY_HEADER_CONTENT_TYPE, "application/octet-stream");
 
     compy_body(ctx, CharSlice99_from_str("1234567890"));
 
