@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="media/logo.png" alt="Compy" width="174">
+</p>
+
 # Compy
 
 A small, portable [RTSP 1.0] server library in C99, designed for embedded IP cameras.
