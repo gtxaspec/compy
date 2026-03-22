@@ -46,8 +46,7 @@ Compy_Context_get_writer(const Compy_Context *ctx) COMPY_PRIV_MUST_USE;
  *
  * @pre `ctx != NULL`
  */
-uint32_t
-Compy_Context_get_cseq(const Compy_Context *ctx) COMPY_PRIV_MUST_USE;
+uint32_t Compy_Context_get_cseq(const Compy_Context *ctx) COMPY_PRIV_MUST_USE;
 
 /**
  * Retrieves the RTSP respond return value.
@@ -56,8 +55,7 @@ Compy_Context_get_cseq(const Compy_Context *ctx) COMPY_PRIV_MUST_USE;
  *
  * @pre `ctx != NULL`
  */
-ssize_t
-Compy_Context_get_ret(const Compy_Context *ctx) COMPY_PRIV_MUST_USE;
+ssize_t Compy_Context_get_ret(const Compy_Context *ctx) COMPY_PRIV_MUST_USE;
 
 /**
  * Appends an RTSP header to the request context.
@@ -73,8 +71,8 @@ Compy_Context_get_ret(const Compy_Context *ctx) COMPY_PRIV_MUST_USE;
  * @pre `fmt != NULL`
  */
 void compy_vheader(
-    Compy_Context *ctx, CharSlice99 key, const char *restrict fmt,
-    va_list list) COMPY_PRIV_GCC_ATTR(format(printf, 3, 0));
+    Compy_Context *ctx, CharSlice99 key, const char *restrict fmt, va_list list)
+    COMPY_PRIV_GCC_ATTR(format(printf, 3, 0));
 
 /**
  * The #compy_vheader twin.
@@ -108,8 +106,8 @@ void compy_body(Compy_Context *ctx, Compy_MessageBody body);
  *
  * @return The number of bytes written or a negative value on error.
  */
-ssize_t compy_respond(
-    Compy_Context *ctx, Compy_StatusCode code, const char *reason);
+ssize_t
+compy_respond(Compy_Context *ctx, Compy_StatusCode code, const char *reason);
 
 /**
  * A shortcut for `compy_respond(ctx, COMPY_STATUS_OK, "OK")`.

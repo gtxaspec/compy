@@ -6,8 +6,8 @@
 #include <assert.h>
 #include <string.h>
 
-ssize_t Compy_Header_serialize(
-    const Compy_Header *restrict self, Compy_Writer w) {
+ssize_t
+Compy_Header_serialize(const Compy_Header *restrict self, Compy_Writer w) {
     assert(self);
     assert(w.self && w.vptr);
 

@@ -19,8 +19,7 @@ struct Compy_RtpTransport {
     uint32_t last_rtp_timestamp;
 };
 
-static uint32_t
-compute_timestamp(Compy_RtpTimestamp ts, uint32_t clock_rate);
+static uint32_t compute_timestamp(Compy_RtpTimestamp ts, uint32_t clock_rate);
 
 Compy_RtpTransport *Compy_RtpTransport_new(
     Compy_Transport t, uint8_t payload_ty, uint32_t clock_rate) {
@@ -90,15 +89,13 @@ int Compy_RtpTransport_send_packet(
         self->seq_num++;
         self->packet_count++;
         self->octet_count += (uint32_t)(payload_header.len + payload.len);
-        self->last_rtp_timestamp =
-            compute_timestamp(ts, self->clock_rate);
+        self->last_rtp_timestamp = compute_timestamp(ts, self->clock_rate);
     }
 
     return ret;
 }
 
-static uint32_t
-compute_timestamp(Compy_RtpTimestamp ts, uint32_t clock_rate) {
+static uint32_t compute_timestamp(Compy_RtpTimestamp ts, uint32_t clock_rate) {
     match(ts) {
         of(Compy_RtpTimestamp_Raw, raw_ts) {
             return *raw_ts;

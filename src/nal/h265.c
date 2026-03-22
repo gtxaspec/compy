@@ -47,15 +47,14 @@ bool Compy_H265NalHeader_is_coded_slice_idr(Compy_H265NalHeader self) {
     return COMPY_H265_NAL_UNIT_IDR_W_RADL == self.unit_type;
 }
 
-bool Compy_H265NalHeader_is_coded_slice_non_idr(
-    Compy_H265NalHeader self) {
+bool Compy_H265NalHeader_is_coded_slice_non_idr(Compy_H265NalHeader self) {
     return COMPY_H265_NAL_UNIT_IDR_N_LP == self.unit_type ||
            COMPY_H265_NAL_UNIT_TRAIL_R == self.unit_type;
 }
 
 void Compy_H265NalHeader_write_fu_header(
-    Compy_H265NalHeader self, uint8_t buffer[restrict],
-    bool is_first_fragment, bool is_last_fragment) {
+    Compy_H265NalHeader self, uint8_t buffer[restrict], bool is_first_fragment,
+    bool is_last_fragment) {
     const uint16_t payload_hdr =
         Compy_H265NalHeader_serialize((Compy_H265NalHeader){
             .forbidden_zero_bit = self.forbidden_zero_bit,

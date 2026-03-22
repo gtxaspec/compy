@@ -43,8 +43,7 @@ typedef struct {
  * @pre `w.self && w.vptr`
  */
 ssize_t Compy_SdpLine_serialize(
-    const Compy_SdpLine *restrict self,
-    Compy_Writer w) COMPY_PRIV_MUST_USE;
+    const Compy_SdpLine *restrict self, Compy_Writer w) COMPY_PRIV_MUST_USE;
 
 /**
  * Printfs a single SDP line to @p w.
@@ -110,30 +109,30 @@ ssize_t compy_sdp_printf(
  * assert(strcmp(expected, buffer) == 0);
  * @endcode
  */
-#define COMPY_SDP_DESCRIBE(ret, w, ...)                                     \
+#define COMPY_SDP_DESCRIBE(ret, w, ...)                                        \
     COMPY_PRIV_SDP_DESCRIBE(ret, w, __VA_ARGS__)
 
 #ifndef DOXYGEN_IGNORE
 
 #include <metalang99.h>
 
-#define COMPY_PRIV_SDP_DESCRIBE(ret, w, ...)                                \
+#define COMPY_PRIV_SDP_DESCRIBE(ret, w, ...)                                   \
     do {                                                                       \
-        ssize_t compy_priv_sdp_ret = 0;                                     \
+        ssize_t compy_priv_sdp_ret = 0;                                        \
         ML99_EVAL(ML99_variadicsForEach(                                       \
             ML99_compose(                                                      \
-                ML99_appl(v(COMPY_PRIV_genSdpPrintf), v(ret, w)),           \
+                ML99_appl(v(COMPY_PRIV_genSdpPrintf), v(ret, w)),              \
                 v(ML99_untuple)),                                              \
             v(__VA_ARGS__)))                                                   \
     } while (0)
 
-#define COMPY_PRIV_genSdpPrintf_IMPL(ret, w, ty, ...)                       \
+#define COMPY_PRIV_genSdpPrintf_IMPL(ret, w, ty, ...)                          \
     v({                                                                        \
-        compy_priv_sdp_ret = compy_sdp_printf(w, ty, __VA_ARGS__);       \
-        if (compy_priv_sdp_ret < 0) {                                       \
+        compy_priv_sdp_ret = compy_sdp_printf(w, ty, __VA_ARGS__);             \
+        if (compy_priv_sdp_ret < 0) {                                          \
             break;                                                             \
         }                                                                      \
-        ret += compy_priv_sdp_ret;                                          \
+        ret += compy_priv_sdp_ret;                                             \
     })
 
 #define COMPY_PRIV_genSdpPrintf_ARITY 2

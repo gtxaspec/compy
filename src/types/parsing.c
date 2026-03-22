@@ -88,8 +88,7 @@ Compy_ParseResult compy_match_char(CharSlice99 input, char c) {
     return compy_match_until(input, char_matcher, &c);
 }
 
-Compy_ParseResult
-compy_match_str(CharSlice99 input, const char *restrict str) {
+Compy_ParseResult compy_match_str(CharSlice99 input, const char *restrict str) {
     assert(str);
 
     const size_t str_len = strlen(str);
@@ -145,8 +144,8 @@ Compy_ParseResult compy_match_ident(CharSlice99 input) {
 
 Compy_ParseResult compy_match_header_name(CharSlice99 input) {
     if (!header_name_char_matcher(input.ptr[0], NULL)) {
-        return Compy_ParseResult_Failure(Compy_ParseError_TypeMismatch(
-            Compy_ParseType_HeaderName, input));
+        return Compy_ParseResult_Failure(
+            Compy_ParseError_TypeMismatch(Compy_ParseType_HeaderName, input));
     }
 
     return compy_match_until(input, header_name_char_matcher, NULL);

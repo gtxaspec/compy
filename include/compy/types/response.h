@@ -62,8 +62,7 @@ Compy_Response Compy_Response_uninit(void) COMPY_PRIV_MUST_USE;
  * @pre `w.self && w.vptr`
  */
 ssize_t Compy_Response_serialize(
-    const Compy_Response *restrict self,
-    Compy_Writer w) COMPY_PRIV_MUST_USE;
+    const Compy_Response *restrict self, Compy_Writer w) COMPY_PRIV_MUST_USE;
 
 /**
  * Parses @p data to @p self.

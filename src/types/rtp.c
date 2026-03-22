@@ -34,8 +34,8 @@ size_t Compy_RtpHeader_size(Compy_RtpHeader self) {
     return size;
 }
 
-uint8_t *Compy_RtpHeader_serialize(
-    Compy_RtpHeader self, uint8_t buffer[restrict]) {
+uint8_t *
+Compy_RtpHeader_serialize(Compy_RtpHeader self, uint8_t buffer[restrict]) {
     assert(buffer);
 
     uint8_t *buffer_backup = buffer;
@@ -154,8 +154,9 @@ int Compy_RtpHeader_deserialize(
         memcpy(&self->extension_profile, p, sizeof(self->extension_profile));
         p += sizeof(self->extension_profile);
 
-        memcpy(&self->extension_payload_len, p,
-               sizeof(self->extension_payload_len));
+        memcpy(
+            &self->extension_payload_len, p,
+            sizeof(self->extension_payload_len));
         p += sizeof(self->extension_payload_len);
 
         const size_t ext_bytes =

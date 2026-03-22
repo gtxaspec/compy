@@ -17,8 +17,8 @@ ssize_t Compy_StatusCode_serialize(
     return VCALL(w, writef, "%" PRIu16, *self);
 }
 
-Compy_ParseResult Compy_StatusCode_parse(
-    Compy_StatusCode *restrict self, CharSlice99 input) {
+Compy_ParseResult
+Compy_StatusCode_parse(Compy_StatusCode *restrict self, CharSlice99 input) {
     assert(self);
 
     const CharSlice99 backup = input;

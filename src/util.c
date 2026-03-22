@@ -33,8 +33,8 @@ static int parse_lower_transport(
     Compy_TransportConfig *restrict result, const char *header_value);
 static int parse_transport_param(
     Compy_TransportConfig *restrict result, const char *param);
-static int parse_channel_pair(
-    Compy_ChannelPair *restrict val, const char *restrict param);
+static int
+parse_channel_pair(Compy_ChannelPair *restrict val, const char *restrict param);
 static int
 parse_port_pair(Compy_PortPair *restrict val, const char *restrict param);
 
@@ -183,12 +183,10 @@ bool compy_require_has_tag(
     return CharSlice99_primitive_eq(value, tag);
 }
 
-void compy_respond_option_not_supported(
-    Compy_Context *ctx, CharSlice99 tag) {
+void compy_respond_option_not_supported(Compy_Context *ctx, CharSlice99 tag) {
     assert(ctx);
 
-    compy_header(
-        ctx, COMPY_HEADER_UNSUPPORTED, "%.*s", (int)tag.len, tag.ptr);
+    compy_header(ctx, COMPY_HEADER_UNSUPPORTED, "%.*s", (int)tag.len, tag.ptr);
     compy_respond(
         ctx, COMPY_STATUS_OPTION_NOT_SUPPORTED, "Option not supported");
 }

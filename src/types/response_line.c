@@ -24,8 +24,8 @@ ssize_t Compy_ResponseLine_serialize(
     return result;
 }
 
-Compy_ParseResult Compy_ResponseLine_parse(
-    Compy_ResponseLine *restrict self, CharSlice99 input) {
+Compy_ParseResult
+Compy_ResponseLine_parse(Compy_ResponseLine *restrict self, CharSlice99 input) {
     assert(self);
 
     const CharSlice99 backup = input;

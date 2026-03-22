@@ -41,14 +41,13 @@ int Compy_ParseError_print(Compy_ParseError self, Compy_Writer w) {
         }
         of(Compy_ParseError_TypeMismatch, kind, str) {
             return COMPY_WRITE_SLICES(
-                w,
-                {
-                    CharSlice99_from_str("Type mismatch: expected "),
-                    CharSlice99_from_str((char *)Compy_ParseType_str(*kind)),
-                    CharSlice99_from_str(", found `"),
-                    TRUNCATE_STR(*str),
-                    CharSlice99_from_str("`"),
-                });
+                w, {
+                       CharSlice99_from_str("Type mismatch: expected "),
+                       CharSlice99_from_str((char *)Compy_ParseType_str(*kind)),
+                       CharSlice99_from_str(", found `"),
+                       TRUNCATE_STR(*str),
+                       CharSlice99_from_str("`"),
+                   });
         }
         of(Compy_ParseError_HeaderMapOverflow) {
             return VCALL(

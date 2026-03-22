@@ -20,10 +20,10 @@
 /**
  * Creates new #Compy_HeaderMap from an array expression of #Compy_Header.
  */
-#define Compy_HeaderMap_from_array(...)                                     \
-    ((Compy_HeaderMap){                                                     \
+#define Compy_HeaderMap_from_array(...)                                        \
+    ((Compy_HeaderMap){                                                        \
         .headers = __VA_ARGS__,                                                \
-        .len = SLICE99_ARRAY_LEN((Compy_Header[])__VA_ARGS__),              \
+        .len = SLICE99_ARRAY_LEN((Compy_Header[])__VA_ARGS__),                 \
     })
 
 /**
@@ -75,8 +75,7 @@ bool Compy_HeaderMap_find(
  * @pre `self != NULL`
  */
 bool Compy_HeaderMap_contains_key(
-    const Compy_HeaderMap *restrict self,
-    CharSlice99 key) COMPY_PRIV_MUST_USE;
+    const Compy_HeaderMap *restrict self, CharSlice99 key) COMPY_PRIV_MUST_USE;
 
 /**
  * Appends a new header to a header map.
@@ -87,8 +86,7 @@ bool Compy_HeaderMap_contains_key(
  * @pre `self != NULL`
  * @pre `!Compy_HeaderMap_is_full(self)`
  */
-void Compy_HeaderMap_append(
-    Compy_HeaderMap *restrict self, Compy_Header h);
+void Compy_HeaderMap_append(Compy_HeaderMap *restrict self, Compy_Header h);
 
 /**
  * Serialises @p self into @p w.
@@ -102,8 +100,7 @@ void Compy_HeaderMap_append(
  * @pre `w.self && w.vptr`
  */
 ssize_t Compy_HeaderMap_serialize(
-    const Compy_HeaderMap *restrict self,
-    Compy_Writer w) COMPY_PRIV_MUST_USE;
+    const Compy_HeaderMap *restrict self, Compy_Writer w) COMPY_PRIV_MUST_USE;
 
 /**
  * Parses @p data to @p self.
@@ -111,8 +108,7 @@ ssize_t Compy_HeaderMap_serialize(
  * @pre `self != NULL`
  */
 Compy_ParseResult Compy_HeaderMap_parse(
-    Compy_HeaderMap *restrict self,
-    CharSlice99 input) COMPY_PRIV_MUST_USE;
+    Compy_HeaderMap *restrict self, CharSlice99 input) COMPY_PRIV_MUST_USE;
 
 /**
  * Tests @p lhs and @p rhs for equality.

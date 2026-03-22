@@ -79,8 +79,7 @@ Compy_NalTransport_new(Compy_RtpTransport *t) COMPY_PRIV_MUST_USE;
  * @pre `t != NULL`
  */
 Compy_NalTransport *Compy_NalTransport_new_with_config(
-    Compy_RtpTransport *t,
-    Compy_NalTransportConfig config) COMPY_PRIV_MUST_USE;
+    Compy_RtpTransport *t, Compy_NalTransportConfig config) COMPY_PRIV_MUST_USE;
 
 /**
  * Sends an RTP/NAL packet.

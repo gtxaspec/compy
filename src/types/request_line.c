@@ -24,8 +24,8 @@ ssize_t Compy_RequestLine_serialize(
     return result;
 }
 
-Compy_ParseResult Compy_RequestLine_parse(
-    Compy_RequestLine *restrict self, CharSlice99 input) {
+Compy_ParseResult
+Compy_RequestLine_parse(Compy_RequestLine *restrict self, CharSlice99 input) {
     assert(self);
 
     const CharSlice99 backup = input;

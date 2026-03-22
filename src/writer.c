@@ -5,8 +5,7 @@
 #include <assert.h>
 
 ssize_t compy_write_slices(
-    Compy_Writer w, size_t len,
-    const CharSlice99 data[restrict static len]) {
+    Compy_Writer w, size_t len, const CharSlice99 data[restrict static len]) {
     assert(w.self && w.vptr);
 
     ssize_t result = 0, ret = 0;

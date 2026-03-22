@@ -26,10 +26,10 @@
 #include <compy/types/request_uri.h>
 #include <compy/types/response.h>
 #include <compy/types/response_line.h>
+#include <compy/types/rtcp.h>
 #include <compy/types/rtp.h>
 #include <compy/types/rtsp_version.h>
 #include <compy/types/sdp.h>
-#include <compy/types/rtcp.h>
 #include <compy/types/status_code.h>
 
 #include <compy/auth.h>

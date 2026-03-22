@@ -62,8 +62,7 @@ Compy_Request Compy_Request_uninit(void) COMPY_PRIV_MUST_USE;
  * @pre `w.self && w.vptr`
  */
 ssize_t Compy_Request_serialize(
-    const Compy_Request *restrict self,
-    Compy_Writer w) COMPY_PRIV_MUST_USE;
+    const Compy_Request *restrict self, Compy_Writer w) COMPY_PRIV_MUST_USE;
 
 /**
  * Parses @p data to @p self.

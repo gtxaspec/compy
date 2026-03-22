@@ -47,8 +47,7 @@ typedef struct {
  * @pre `w.self && w.vptr`
  */
 ssize_t Compy_RequestLine_serialize(
-    const Compy_RequestLine *restrict self,
-    Compy_Writer w) COMPY_PRIV_MUST_USE;
+    const Compy_RequestLine *restrict self, Compy_Writer w) COMPY_PRIV_MUST_USE;
 
 /**
  * Parses @p data to @p self.
@@ -56,8 +55,7 @@ ssize_t Compy_RequestLine_serialize(
  * @pre `self != NULL`
  */
 Compy_ParseResult Compy_RequestLine_parse(
-    Compy_RequestLine *restrict self,
-    CharSlice99 input) COMPY_PRIV_MUST_USE;
+    Compy_RequestLine *restrict self, CharSlice99 input) COMPY_PRIV_MUST_USE;
 
 /**
  * Tests @p lhs and @p rhs for equality.

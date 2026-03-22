@@ -63,8 +63,7 @@ bool Compy_NalTransport_is_full(Compy_NalTransport *self) {
 }
 
 int Compy_NalTransport_send_packet(
-    Compy_NalTransport *self, Compy_RtpTimestamp ts,
-    Compy_NalUnit nalu) {
+    Compy_NalTransport *self, Compy_RtpTimestamp ts, Compy_NalUnit nalu) {
     assert(self);
 
     const size_t max_packet_size = MATCHES(nalu.header, Compy_NalHeader_H264)
@@ -74,9 +73,8 @@ int Compy_NalTransport_send_packet(
                      Compy_NalHeader_size(nalu.header) + nalu.payload.len;
 
     if (nalu_size < max_packet_size) {
-        const bool marker =
-            Compy_NalHeader_is_coded_slice_idr(nalu.header) ||
-            Compy_NalHeader_is_coded_slice_non_idr(nalu.header);
+        const bool marker = Compy_NalHeader_is_coded_slice_idr(nalu.header) ||
+                            Compy_NalHeader_is_coded_slice_non_idr(nalu.header);
 
         const size_t header_buf_size = Compy_NalHeader_size(nalu.header);
         uint8_t *header_buf = alloca(header_buf_size);
@@ -148,6 +146,5 @@ static int send_fu(
 
     const bool marker = is_last_fragment;
 
-    return Compy_RtpTransport_send_packet(
-        t, ts, marker, fu_header, fu.payload);
+    return Compy_RtpTransport_send_packet(t, ts, marker, fu_header, fu.payload);
 }

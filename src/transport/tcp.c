@@ -19,8 +19,8 @@ typedef struct {
 
 declImpl(Compy_Transport, Compy_TcpTransport);
 
-Compy_Transport compy_transport_tcp(
-    Compy_Writer w, uint8_t channel_id, size_t max_buffer) {
+Compy_Transport
+compy_transport_tcp(Compy_Writer w, uint8_t channel_id, size_t max_buffer) {
     assert(w.self && w.vptr);
 
     Compy_TcpTransport *self = malloc(sizeof *self);

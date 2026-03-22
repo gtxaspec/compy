@@ -4,8 +4,8 @@
 
 #include <assert.h>
 
-Compy_ParseResult Compy_ReasonPhrase_parse(
-    Compy_ReasonPhrase *restrict self, CharSlice99 input) {
+Compy_ParseResult
+Compy_ReasonPhrase_parse(Compy_ReasonPhrase *restrict self, CharSlice99 input) {
     assert(self);
 
     const CharSlice99 backup = input;

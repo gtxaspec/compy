@@ -18,14 +18,13 @@
  *
  * See [Datatype99](https://github.com/Hirrolot/datatype99) for the macro usage.
  */
-#define COMPY_DEF_OPTION(...)                                               \
-    ML99_OVERLOAD(COMPY_PRIV_DEF_OPTION_, __VA_ARGS__)
+#define COMPY_DEF_OPTION(...) ML99_OVERLOAD(COMPY_PRIV_DEF_OPTION_, __VA_ARGS__)
 
 #ifndef DOXYGEN_IGNORE
 
-#define COMPY_PRIV_DEF_OPTION_1(T)                                          \
+#define COMPY_PRIV_DEF_OPTION_1(T)                                             \
     datatype99(T##Option, (T##_Some, T), (T##_None))
-#define COMPY_PRIV_DEF_OPTION_2(name, T)                                    \
+#define COMPY_PRIV_DEF_OPTION_2(name, T)                                       \
     datatype99(name##Option, (name##_Some, T), (name##_None))
 
 #endif // DOXYGEN_IGNORE

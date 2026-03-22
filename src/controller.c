@@ -16,13 +16,12 @@ void compy_dispatch(
     }
 
     const Compy_Method method = req->start_line.method,
-                          options = COMPY_METHOD_OPTIONS,
-                          describe = COMPY_METHOD_DESCRIBE,
-                          setup = COMPY_METHOD_SETUP,
-                          play = COMPY_METHOD_PLAY,
-                          pause_m = COMPY_METHOD_PAUSE,
-                          teardown = COMPY_METHOD_TEARDOWN,
-                          get_parameter = COMPY_METHOD_GET_PARAMETER;
+                       options = COMPY_METHOD_OPTIONS,
+                       describe = COMPY_METHOD_DESCRIBE,
+                       setup = COMPY_METHOD_SETUP, play = COMPY_METHOD_PLAY,
+                       pause_m = COMPY_METHOD_PAUSE,
+                       teardown = COMPY_METHOD_TEARDOWN,
+                       get_parameter = COMPY_METHOD_GET_PARAMETER;
 
     if (Compy_Method_eq(&method, &options)) {
         VCALL(controller, options, ctx, req);

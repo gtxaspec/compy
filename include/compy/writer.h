@@ -19,7 +19,7 @@
 /**
  * The user-supplied data writer interface.
  */
-#define Compy_Writer_IFACE                                                  \
+#define Compy_Writer_IFACE                                                     \
                                                                                \
     /*                                                                         \
      * Writes @p data into itself.                                             \
@@ -71,8 +71,8 @@ interface99(Compy_Writer);
  * The same as #compy_write_slices but calculates an array length from
  * variadic arguments (the syntactically separated items of the array).
  */
-#define COMPY_WRITE_SLICES(w, ...)                                          \
-    compy_write_slices(                                                     \
+#define COMPY_WRITE_SLICES(w, ...)                                             \
+    compy_write_slices(                                                        \
         w, SLICE99_ARRAY_LEN((const CharSlice99[])__VA_ARGS__),                \
         (const CharSlice99[])__VA_ARGS__)
 

@@ -41,8 +41,7 @@ typedef struct {
  * @pre `w.self && w.vptr`
  */
 ssize_t Compy_RtspVersion_serialize(
-    const Compy_RtspVersion *restrict self,
-    Compy_Writer w) COMPY_PRIV_MUST_USE;
+    const Compy_RtspVersion *restrict self, Compy_Writer w) COMPY_PRIV_MUST_USE;
 
 /**
  * Parses @p data to @p self.
@@ -50,8 +49,7 @@ ssize_t Compy_RtspVersion_serialize(
  * @pre `self != NULL`
  */
 Compy_ParseResult Compy_RtspVersion_parse(
-    Compy_RtspVersion *restrict self,
-    CharSlice99 input) COMPY_PRIV_MUST_USE;
+    Compy_RtspVersion *restrict self, CharSlice99 input) COMPY_PRIV_MUST_USE;
 
 /**
  * Tests @p lhs and @p rhs for equality.

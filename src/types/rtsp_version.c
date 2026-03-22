@@ -18,8 +18,8 @@ ssize_t Compy_RtspVersion_serialize(
         w, writef, "RTSP/%" PRIu8 ".%" PRIu8, self->major, self->minor);
 }
 
-Compy_ParseResult Compy_RtspVersion_parse(
-    Compy_RtspVersion *restrict self, CharSlice99 input) {
+Compy_ParseResult
+Compy_RtspVersion_parse(Compy_RtspVersion *restrict self, CharSlice99 input) {
     assert(self);
 
     const CharSlice99 backup = input;

@@ -4,8 +4,8 @@
 
 #include <assert.h>
 
-Compy_ParseResult Compy_RequestUri_parse(
-    Compy_RequestUri *restrict self, CharSlice99 input) {
+Compy_ParseResult
+Compy_RequestUri_parse(Compy_RequestUri *restrict self, CharSlice99 input) {
     assert(self);
 
     const CharSlice99 backup = input;

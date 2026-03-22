@@ -23,8 +23,7 @@ typedef CharSlice99 Compy_ReasonPhrase;
  * @pre `self != NULL`
  */
 Compy_ParseResult Compy_ReasonPhrase_parse(
-    Compy_ReasonPhrase *restrict self,
-    CharSlice99 data) COMPY_PRIV_MUST_USE;
+    Compy_ReasonPhrase *restrict self, CharSlice99 data) COMPY_PRIV_MUST_USE;
 
 /**
  * Tests @p lhs and @p rhs for equality.

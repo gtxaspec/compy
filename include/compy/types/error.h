@@ -38,8 +38,7 @@ typedef enum {
 /**
  * Returns a string representation of @p self.
  */
-const char *
-Compy_ParseType_str(Compy_ParseType self) COMPY_PRIV_MUST_USE;
+const char *Compy_ParseType_str(Compy_ParseType self) COMPY_PRIV_MUST_USE;
 
 /**
  * An error that might occur during parsing.
@@ -110,14 +109,12 @@ datatype99(
 /**
  * Returns whether @p self is complete.
  */
-bool Compy_ParseStatus_is_complete(Compy_ParseStatus self)
-    COMPY_PRIV_MUST_USE;
+bool Compy_ParseStatus_is_complete(Compy_ParseStatus self) COMPY_PRIV_MUST_USE;
 
 /**
  * Returns whether @p self is partial.
  */
-bool Compy_ParseStatus_is_partial(Compy_ParseStatus self)
-    COMPY_PRIV_MUST_USE;
+bool Compy_ParseStatus_is_partial(Compy_ParseStatus self) COMPY_PRIV_MUST_USE;
 
 /**
  * A result of parsing (either success or failure).
@@ -142,29 +139,24 @@ Compy_ParseResult Compy_ParseResult_partial(void) COMPY_PRIV_MUST_USE;
  * Creates a **successful** and **complete** parse result with the byte offset
  * @p offset (from the beginning of input).
  */
-Compy_ParseResult
-Compy_ParseResult_complete(size_t offset) COMPY_PRIV_MUST_USE;
+Compy_ParseResult Compy_ParseResult_complete(size_t offset) COMPY_PRIV_MUST_USE;
 
 /**
  * Returns whether @p self is successful.
  */
-bool Compy_ParseResult_is_success(Compy_ParseResult self)
-    COMPY_PRIV_MUST_USE;
+bool Compy_ParseResult_is_success(Compy_ParseResult self) COMPY_PRIV_MUST_USE;
 
 /**
  * Returns whether @p self is a failure.
  */
-bool Compy_ParseResult_is_failure(Compy_ParseResult self)
-    COMPY_PRIV_MUST_USE;
+bool Compy_ParseResult_is_failure(Compy_ParseResult self) COMPY_PRIV_MUST_USE;
 
 /**
  * Returns whether @p self is both **successful** and **partial**.
  */
-bool Compy_ParseResult_is_partial(Compy_ParseResult self)
-    COMPY_PRIV_MUST_USE;
+bool Compy_ParseResult_is_partial(Compy_ParseResult self) COMPY_PRIV_MUST_USE;
 
 /**
  * The same as #Compy_ParseResult_is_partial but for a complete result.
  */
-bool Compy_ParseResult_is_complete(Compy_ParseResult self)
-    COMPY_PRIV_MUST_USE;
+bool Compy_ParseResult_is_complete(Compy_ParseResult self) COMPY_PRIV_MUST_USE;

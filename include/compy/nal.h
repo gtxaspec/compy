@@ -35,8 +35,7 @@ datatype99(
 /**
  * Returns the NAL unit type of @p self.
  */
-uint8_t
-Compy_NalHeader_unit_type(Compy_NalHeader self) COMPY_PRIV_MUST_USE;
+uint8_t Compy_NalHeader_unit_type(Compy_NalHeader self) COMPY_PRIV_MUST_USE;
 
 /**
  * Computes the size of @p self in bytes.
@@ -51,8 +50,7 @@ size_t Compy_NalHeader_size(Compy_NalHeader self) COMPY_PRIV_MUST_USE;
  * @see H.265 Fragmentation Units (FUs):
  * <https://datatracker.ietf.org/doc/html/rfc7798#section-4.4.3>
  */
-size_t
-Compy_NalHeader_fu_size(Compy_NalHeader self) COMPY_PRIV_MUST_USE;
+size_t Compy_NalHeader_fu_size(Compy_NalHeader self) COMPY_PRIV_MUST_USE;
 
 /**
  * Checks whether @p self is VPS.
@@ -88,8 +86,7 @@ bool Compy_NalHeader_is_coded_slice_non_idr(Compy_NalHeader self)
  * @param[out] buffer The memory area capable of storing
  * `Compy_NalHeader_size(self)` bytes.
  */
-void Compy_NalHeader_serialize(
-    Compy_NalHeader self, uint8_t buffer[restrict]);
+void Compy_NalHeader_serialize(Compy_NalHeader self, uint8_t buffer[restrict]);
 
 /**
  * Writes a FU header of @p self to @p buffer.

@@ -13,7 +13,7 @@
  * See [Interface99](https://github.com/Hirrolot/interface99) for the macro
  * usage.
  */
-#define Compy_Droppable_IFACE                                               \
+#define Compy_Droppable_IFACE                                                  \
                                                                                \
     /*                                                                         \
      * Deallocates itself so that it can no longer be used.                    \

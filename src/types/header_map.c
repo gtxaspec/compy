@@ -39,8 +39,7 @@ bool Compy_HeaderMap_contains_key(
     return Compy_HeaderMap_find(self, key, NULL);
 }
 
-void Compy_HeaderMap_append(
-    Compy_HeaderMap *restrict self, Compy_Header h) {
+void Compy_HeaderMap_append(Compy_HeaderMap *restrict self, Compy_Header h) {
     assert(self);
     assert(!Compy_HeaderMap_is_full(self));
 
@@ -93,8 +92,7 @@ Compy_HeaderMap_parse(Compy_HeaderMap *restrict self, CharSlice99 input) {
 }
 
 bool Compy_HeaderMap_eq(
-    const Compy_HeaderMap *restrict lhs,
-    const Compy_HeaderMap *restrict rhs) {
+    const Compy_HeaderMap *restrict lhs, const Compy_HeaderMap *restrict rhs) {
     assert(lhs);
     assert(rhs);
 

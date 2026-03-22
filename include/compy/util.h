@@ -189,8 +189,7 @@ bool compy_require_has_tag(
  *
  * @pre `ctx != NULL`
  */
-void compy_respond_option_not_supported(
-    Compy_Context *ctx, CharSlice99 tag);
+void compy_respond_option_not_supported(Compy_Context *ctx, CharSlice99 tag);
 
 /**
  * Returns a four-octet interleaved binary data header.

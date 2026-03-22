@@ -56,8 +56,7 @@ ssize_t Compy_ResponseLine_serialize(
  * @pre `self != NULL`
  */
 Compy_ParseResult Compy_ResponseLine_parse(
-    Compy_ResponseLine *restrict self,
-    CharSlice99 input) COMPY_PRIV_MUST_USE;
+    Compy_ResponseLine *restrict self, CharSlice99 input) COMPY_PRIV_MUST_USE;
 
 /**
  * Tests @p lhs and @p rhs for equality.

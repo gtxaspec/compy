@@ -8,8 +8,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-ssize_t Compy_SdpLine_serialize(
-    const Compy_SdpLine *restrict self, Compy_Writer w) {
+ssize_t
+Compy_SdpLine_serialize(const Compy_SdpLine *restrict self, Compy_Writer w) {
     assert(self);
     assert(w.self && w.vptr);
 
@@ -22,8 +22,8 @@ ssize_t Compy_SdpLine_serialize(
            });
 }
 
-ssize_t compy_sdp_printf(
-    Compy_Writer w, Compy_SdpType ty, const char *fmt, ...) {
+ssize_t
+compy_sdp_printf(Compy_Writer w, Compy_SdpType ty, const char *fmt, ...) {
     assert(w.self && w.vptr);
     assert(fmt);
 

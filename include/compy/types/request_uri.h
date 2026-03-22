@@ -23,8 +23,7 @@ typedef CharSlice99 Compy_RequestUri;
  * @pre `self != NULL`
  */
 Compy_ParseResult Compy_RequestUri_parse(
-    Compy_RequestUri *restrict self,
-    CharSlice99 input) COMPY_PRIV_MUST_USE;
+    Compy_RequestUri *restrict self, CharSlice99 input) COMPY_PRIV_MUST_USE;
 
 /**
  * Tests @p lhs and @p rhs for equality.

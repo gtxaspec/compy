@@ -36,83 +36,76 @@ typedef enum {
  *  - `ctx` -- a request context used to respond to your RTSP client.
  *  - `req` -- a fully parsed request object.
  */
-#define Compy_Controller_IFACE                                              \
+#define Compy_Controller_IFACE                                                 \
                                                                                \
     /*                                                                         \
      * Handles `OPTIONS` as defined in                                         \
      * <https://datatracker.ietf.org/doc/html/rfc2326#section-10.1>.           \
      */                                                                        \
     vfunc99(                                                                   \
-        void, options, VSelf99, Compy_Context *ctx,                         \
-        const Compy_Request *req)                                           \
+        void, options, VSelf99, Compy_Context *ctx, const Compy_Request *req)  \
                                                                                \
     /*                                                                         \
      * Handles `DESCRIBE` as defined in                                        \
      * <https://datatracker.ietf.org/doc/html/rfc2326#section-10.2>.           \
      */                                                                        \
     vfunc99(                                                                   \
-        void, describe, VSelf99, Compy_Context *ctx,                        \
-        const Compy_Request *req)                                           \
+        void, describe, VSelf99, Compy_Context *ctx, const Compy_Request *req) \
                                                                                \
     /*                                                                         \
      * Handles `SETUP` as defined in                                           \
      * <https://datatracker.ietf.org/doc/html/rfc2326#section-10.4>.           \
      */                                                                        \
     vfunc99(                                                                   \
-        void, setup, VSelf99, Compy_Context *ctx,                           \
-        const Compy_Request *req)                                           \
+        void, setup, VSelf99, Compy_Context *ctx, const Compy_Request *req)    \
                                                                                \
     /*                                                                         \
      * Handles `PLAY` as defined in                                            \
      * <https://datatracker.ietf.org/doc/html/rfc2326#section-10.5>.           \
      */                                                                        \
-    vfunc99(                                                                   \
-        void, play, VSelf99, Compy_Context *ctx,                            \
-        const Compy_Request *req)                                           \
+    vfunc99(void, play, VSelf99, Compy_Context *ctx, const Compy_Request *req) \
                                                                                \
     /*                                                                         \
      * Handles `PAUSE` as defined in                                           \
      * <https://datatracker.ietf.org/doc/html/rfc2326#section-10.6>.           \
      */                                                                        \
     vfunc99(                                                                   \
-        void, pause_method, VSelf99, Compy_Context *ctx,                    \
-        const Compy_Request *req)                                           \
+        void, pause_method, VSelf99, Compy_Context *ctx,                       \
+        const Compy_Request *req)                                              \
                                                                                \
     /*                                                                         \
      * Handles `TEARDOWN` as defined in                                        \
      * <https://datatracker.ietf.org/doc/html/rfc2326#section-10.7>.           \
      */                                                                        \
     vfunc99(                                                                   \
-        void, teardown, VSelf99, Compy_Context *ctx,                        \
-        const Compy_Request *req)                                           \
+        void, teardown, VSelf99, Compy_Context *ctx, const Compy_Request *req) \
                                                                                \
     /*                                                                         \
      * Handles `GET_PARAMETER` as defined in                                   \
      * <https://datatracker.ietf.org/doc/html/rfc2326#section-10.8>.           \
      */                                                                        \
     vfunc99(                                                                   \
-        void, get_parameter, VSelf99, Compy_Context *ctx,                   \
-        const Compy_Request *req)                                           \
+        void, get_parameter, VSelf99, Compy_Context *ctx,                      \
+        const Compy_Request *req)                                              \
                                                                                \
     /*                                                                         \
      * Handles a command that is not one of the above.                         \
      */                                                                        \
     vfunc99(                                                                   \
-        void, unknown, VSelf99, Compy_Context *ctx,                         \
-        const Compy_Request *req)                                           \
+        void, unknown, VSelf99, Compy_Context *ctx, const Compy_Request *req)  \
                                                                                \
     /*                                                                         \
      * A method that is invoked _before_ the actual request handling.          \
      */                                                                        \
     vfunc99(                                                                   \
-        Compy_ControlFlow, before, VSelf99, Compy_Context *ctx,          \
-        const Compy_Request *req)                                           \
+        Compy_ControlFlow, before, VSelf99, Compy_Context *ctx,                \
+        const Compy_Request *req)                                              \
                                                                                \
     /*                                                                         \
      * A method that is invoked _after_ request handling.                      \
      */                                                                        \
     vfunc99(                                                                   \
-        void, after, VSelf99, ssize_t ret, Compy_Context *ctx,              \
+        void, after, VSelf99, ssize_t ret, Compy_Context *ctx,                 \
         const Compy_Request *req)
 
 /**

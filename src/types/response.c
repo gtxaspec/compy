@@ -17,18 +17,16 @@ Compy_Response Compy_Response_uninit(void) {
     return self;
 }
 
-ssize_t Compy_Response_serialize(
-    const Compy_Response *restrict self, Compy_Writer w) {
+ssize_t
+Compy_Response_serialize(const Compy_Response *restrict self, Compy_Writer w) {
     assert(self);
     assert(w.self && w.vptr);
 
     ssize_t result = 0;
 
-    CHK_WRITE_ERR(
-        result, Compy_ResponseLine_serialize(&self->start_line, w));
+    CHK_WRITE_ERR(result, Compy_ResponseLine_serialize(&self->start_line, w));
 
-    if (!Compy_HeaderMap_contains_key(
-            &self->header_map, COMPY_HEADER_C_SEQ)) {
+    if (!Compy_HeaderMap_contains_key(&self->header_map, COMPY_HEADER_C_SEQ)) {
         const Compy_Header cseq = {
             COMPY_HEADER_C_SEQ,
             CharSlice99_alloca_fmt("%" PRIu32, self->cseq),
@@ -121,8 +119,7 @@ Compy_Response_parse(Compy_Response *restrict self, CharSlice99 input) {
 }
 
 bool Compy_Response_eq(
-    const Compy_Response *restrict lhs,
-    const Compy_Response *restrict rhs) {
+    const Compy_Response *restrict lhs, const Compy_Response *restrict rhs) {
     assert(lhs);
     assert(rhs);
 

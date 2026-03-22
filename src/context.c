@@ -82,8 +82,8 @@ void compy_body(Compy_Context *ctx, Compy_MessageBody body) {
     ctx->body = body;
 }
 
-ssize_t compy_respond(
-    Compy_Context *ctx, Compy_StatusCode code, const char *reason) {
+ssize_t
+compy_respond(Compy_Context *ctx, Compy_StatusCode code, const char *reason) {
     assert(ctx);
     assert(reason);
 

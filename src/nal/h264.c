@@ -32,14 +32,13 @@ bool Compy_H264NalHeader_is_coded_slice_idr(Compy_H264NalHeader self) {
     return COMPY_H264_NAL_UNIT_CODED_SLICE_IDR == self.unit_type;
 }
 
-bool Compy_H264NalHeader_is_coded_slice_non_idr(
-    Compy_H264NalHeader self) {
+bool Compy_H264NalHeader_is_coded_slice_non_idr(Compy_H264NalHeader self) {
     return COMPY_H264_NAL_UNIT_CODED_SLICE_NON_IDR == self.unit_type;
 }
 
 void Compy_H264NalHeader_write_fu_header(
-    Compy_H264NalHeader self, uint8_t buffer[restrict],
-    bool is_first_fragment, bool is_last_fragment) {
+    Compy_H264NalHeader self, uint8_t buffer[restrict], bool is_first_fragment,
+    bool is_last_fragment) {
     uint8_t fu_identifier = (uint8_t)0b01111100; // 0, nal_ref_idc, FU-A (28)
 
     if ((self.ref_idc & 0b00000010) == 0) {

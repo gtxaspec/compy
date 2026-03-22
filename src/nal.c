@@ -3,12 +3,12 @@
 #include <assert.h>
 
 #define NAL_HEADER_DERIVE_GETTER(T, name, h264_value, h265_value)              \
-    T Compy_NalHeader_##name(Compy_NalHeader self) {                     \
+    T Compy_NalHeader_##name(Compy_NalHeader self) {                           \
         T result = 0;                                                          \
                                                                                \
         match(self) {                                                          \
-            of(Compy_NalHeader_H264, h) result = h264_value;                \
-            of(Compy_NalHeader_H265, h) result = h265_value;                \
+            of(Compy_NalHeader_H264, h) result = h264_value;                   \
+            of(Compy_NalHeader_H265, h) result = h265_value;                   \
         }                                                                      \
                                                                                \
         return result;                                                         \
@@ -25,14 +25,12 @@ NAL_HEADER_DERIVE_GETTER(
 #undef NAL_HEADER_DERIVE_GETTER
 
 #define NAL_HEADER_DERIVE_PREDICATE(fn)                                        \
-    bool Compy_NalHeader_##fn(Compy_NalHeader self) {                    \
+    bool Compy_NalHeader_##fn(Compy_NalHeader self) {                          \
         bool result = 0;                                                       \
                                                                                \
         match(self) {                                                          \
-            of(Compy_NalHeader_H264, h) result =                            \
-                Compy_H264NalHeader_##fn(*h);                               \
-            of(Compy_NalHeader_H265, h) result =                            \
-                Compy_H265NalHeader_##fn(*h);                               \
+            of(Compy_NalHeader_H264, h) result = Compy_H264NalHeader_##fn(*h); \
+            of(Compy_NalHeader_H265, h) result = Compy_H265NalHeader_##fn(*h); \
         }                                                                      \
                                                                                \
         return result;                                                         \
@@ -46,8 +44,7 @@ NAL_HEADER_DERIVE_PREDICATE(is_coded_slice_non_idr)
 
 #undef NAL_HEADER_DERIVE_PREDICATE
 
-void Compy_NalHeader_serialize(
-    Compy_NalHeader self, uint8_t buffer[restrict]) {
+void Compy_NalHeader_serialize(Compy_NalHeader self, uint8_t buffer[restrict]) {
     match(self) {
         of(Compy_NalHeader_H264, h) {
             const uint8_t repr = Compy_H264NalHeader_serialize(*h);

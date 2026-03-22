@@ -18,8 +18,8 @@ Compy_Request Compy_Request_uninit(void) {
     return self;
 }
 
-ssize_t Compy_Request_serialize(
-    const Compy_Request *restrict self, Compy_Writer w) {
+ssize_t
+Compy_Request_serialize(const Compy_Request *restrict self, Compy_Writer w) {
     assert(self);
     assert(w.self && w.vptr);
 
@@ -27,8 +27,7 @@ ssize_t Compy_Request_serialize(
 
     CHK_WRITE_ERR(result, Compy_RequestLine_serialize(&self->start_line, w));
 
-    if (!Compy_HeaderMap_contains_key(
-            &self->header_map, COMPY_HEADER_C_SEQ)) {
+    if (!Compy_HeaderMap_contains_key(&self->header_map, COMPY_HEADER_C_SEQ)) {
         const Compy_Header cseq = {
             COMPY_HEADER_C_SEQ,
             CharSlice99_alloca_fmt("%" PRIu32, self->cseq),
@@ -121,8 +120,7 @@ Compy_Request_parse(Compy_Request *restrict self, CharSlice99 input) {
 }
 
 bool Compy_Request_eq(
-    const Compy_Request *restrict lhs,
-    const Compy_Request *restrict rhs) {
+    const Compy_Request *restrict lhs, const Compy_Request *restrict rhs) {
     assert(lhs);
     assert(rhs);
 

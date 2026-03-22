@@ -43,8 +43,7 @@ typedef struct {
  * @pre `w.self && w.vptr`
  */
 ssize_t Compy_Header_serialize(
-    const Compy_Header *restrict self,
-    Compy_Writer w) COMPY_PRIV_MUST_USE;
+    const Compy_Header *restrict self, Compy_Writer w) COMPY_PRIV_MUST_USE;
 
 /**
  * Parses @p data to @p self.
@@ -72,14 +71,12 @@ bool Compy_Header_eq(
 /**
  * `Accept-Encoding`.
  */
-#define COMPY_HEADER_ACCEPT_ENCODING                                        \
-    (CharSlice99_from_str("Accept-Encoding"))
+#define COMPY_HEADER_ACCEPT_ENCODING (CharSlice99_from_str("Accept-Encoding"))
 
 /**
  * `Accept-Language`.
  */
-#define COMPY_HEADER_ACCEPT_LANGUAGE                                        \
-    (CharSlice99_from_str("Accept-Language"))
+#define COMPY_HEADER_ACCEPT_LANGUAGE (CharSlice99_from_str("Accept-Language"))
 
 /**
  * `Allow`.
@@ -124,14 +121,12 @@ bool Compy_Header_eq(
 /**
  * `Content-Encoding`.
  */
-#define COMPY_HEADER_CONTENT_ENCODING                                       \
-    (CharSlice99_from_str("Content-Encoding"))
+#define COMPY_HEADER_CONTENT_ENCODING (CharSlice99_from_str("Content-Encoding"))
 
 /**
  * `Content-Language`.
  */
-#define COMPY_HEADER_CONTENT_LANGUAGE                                       \
-    (CharSlice99_from_str("Content-Language"))
+#define COMPY_HEADER_CONTENT_LANGUAGE (CharSlice99_from_str("Content-Language"))
 
 /**
  * `Content-Length`.
@@ -141,8 +136,7 @@ bool Compy_Header_eq(
 /**
  * `Content-Location"`.
  */
-#define COMPY_HEADER_CONTENT_LOCATION                                       \
-    (CharSlice99_from_str("Content-Location"))
+#define COMPY_HEADER_CONTENT_LOCATION (CharSlice99_from_str("Content-Location"))
 
 /**
  * `Content-Type`.
@@ -172,7 +166,7 @@ bool Compy_Header_eq(
 /**
  * `If-Modified-Since`.
  */
-#define COMPY_HEADER_IF_MODIFIED_SINCE                                      \
+#define COMPY_HEADER_IF_MODIFIED_SINCE                                         \
     (CharSlice99_from_str("If-Modified-Since"))
 
 /**
@@ -183,7 +177,7 @@ bool Compy_Header_eq(
 /**
  * `Proxy-Authenticate`.
  */
-#define COMPY_HEADER_PROXY_AUTHENTICATE                                     \
+#define COMPY_HEADER_PROXY_AUTHENTICATE                                        \
     (CharSlice99_from_str("Proxy-Authenticate"))
 
 /**
@@ -264,5 +258,4 @@ bool Compy_Header_eq(
 /**
  * `WWW-Authenticate`.
  */
-#define COMPY_HEADER_WWW_AUTHENTICATE                                       \
-    (CharSlice99_from_str("WWW-Authenticate"))
+#define COMPY_HEADER_WWW_AUTHENTICATE (CharSlice99_from_str("WWW-Authenticate"))
