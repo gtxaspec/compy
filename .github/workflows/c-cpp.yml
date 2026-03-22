@@ -1,76 +1,65 @@
-name: C/C++ CI
+name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
-    branches: [master]
+    branches: [main]
 
 jobs:
-  test:
+  test-no-tls:
     strategy:
       matrix:
         compiler: [gcc, clang]
-
     runs-on: ubuntu-latest
     env:
       CC: ${{ matrix.compiler }}
-
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-      - name: Install CMake and Clang
-        run: sudo apt update && sudo apt install -y cmake
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake clang
 
-      - name: Install Clang
-        if: matrix.compiler == 'clang'
-        run: sudo apt install -y clang
+      - name: Build and test (no TLS)
+        run: |
+          cd tests
+          cmake -B build
+          cmake --build build
+          ./build/tests
 
-      - name: Tests
-        run: bash scripts/test.sh
-
-  test-server:
+  test-tls-backends:
+    strategy:
+      matrix:
+        backend:
+          - { name: OpenSSL, flag: COMPY_TLS_OPENSSL, pkg: libssl-dev }
+          - { name: wolfSSL, flag: COMPY_TLS_WOLFSSL, pkg: libwolfssl-dev }
+          - { name: mbedTLS, flag: COMPY_TLS_MBEDTLS, pkg: libmbedtls-dev }
+          - { name: BearSSL, flag: COMPY_TLS_BEARSSL, pkg: libbearssl-dev }
     runs-on: ubuntu-latest
-
+    name: test-${{ matrix.backend.name }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-      - name: Install libevent, CMake, FFMpeg
-        run: sudo apt update && sudo apt install -y libevent-dev cmake ffmpeg xxd
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ${{ matrix.backend.pkg }}
 
-      - name: Test the example server
-        run: sudo bash scripts/test-server.sh
+      - name: Build and test (${{ matrix.backend.name }})
+        run: |
+          cd tests
+          cmake -B build -D${{ matrix.backend.flag }}=ON
+          cmake --build build
+          ./build/tests
 
-  check-fmt:
+  check-format:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-      - name: Install libevent
-        run: sudo apt update && sudo apt install -y clang-format
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format
 
-      - name: Download run-clang-format
-        run: git submodule update --init run-clang-format
-
-      - name: Check code formatting
-        run: bash scripts/check-fmt.sh
-
-  deploy-docs:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Install Doxygen
-        run: sudo apt update && sudo apt install -y doxygen graphviz
-
-      - name: Build the docs
-        run: bash scripts/docs.sh
-
-      - name: Deploy the docs
-        if: ${{ !env.ACT && github.event_name != 'pull_request' }}
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs/
+      - name: Check formatting
+        run: |
+          find include src tests -name '*.c' -o -name '*.h' | \
+            grep -v '/priv/compiler_attrs.h' | \
+            xargs clang-format --dry-run --Werror
