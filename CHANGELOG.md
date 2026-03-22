@@ -10,7 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  - **RTCP support** (RFC 3550 Section 6): Sender Reports, Receiver Reports, SDES, BYE packets.
  - **Backchannel support**: unified receive path for two-way audio per ONVIF Streaming Spec Section 5.3.
- - **Digest authentication** (RFC 2617): self-contained MD5, nonce management, constant-time comparison.
+ - **Digest authentication** (RFC 2617): self-contained MD5, nonce management, constant-time comparison, fresh nonce per challenge, volatile password wipe, `getrandom()` with `/dev/urandom` fallback.
+ - **RTSPS** (RTSP over TLS): `Compy_TlsContext`, `Compy_TlsConn`, `compy_tls_writer()`, `compy_tls_read()`.
+ - **SRTP** (RFC 3711): AES-128-CM + HMAC-SHA1-80/32 encryption, key derivation, SDP crypto attribute format/parse, `compy_transport_srtp()`.
+ - **SRTCP** (RFC 3711 Section 3.4): encrypted RTCP with E-flag, SRTCP index, independent key derivation, `compy_transport_srtcp()`.
+ - **SRTP/SRTCP receive-side decrypt**: `Compy_SrtpRecvCtx` with `compy_srtp_recv_unprotect()` and `compy_srtcp_recv_unprotect()`, constant-time auth verification, 64-bit replay window (RFC 3711 Section 3.3.2), proper ROC estimation (RFC 3711 Section 3.3.1), monotonic SRTCP index validation.
+ - **Four TLS backends** (compile-time selectable): OpenSSL, wolfSSL, mbedTLS (3.6.x and 4.0 with PSA Crypto), BearSSL (SRTP crypto only).
+ - **Crypto ops abstraction** (`include/compy/priv/crypto.h`): function pointer structs for TLS and SRTP operations.
+ - **Base64** (RFC 4648): self-contained encode/decode in `include/compy/priv/base64.h`.
  - **PAUSE and GET_PARAMETER** methods in controller dispatch.
  - **RTP statistics tracking**: packet count, octet count, timestamp accessors on `Compy_RtpTransport`.
  - **RTP header deserialization** for the receive path.
@@ -22,8 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - **`server_port`** field in `Compy_TransportConfig` and Transport response header (RFC 2326 Section 12.39).
  - **ONVIF backchannel feature tag** constant (`COMPY_REQUIRE_ONVIF_BACKCHANNEL`).
  - **Libevent bridge** (`examples/compy-libevent.c`) replacing external dependency.
- - **mmap-based media loading** in example server with CLI flags (`-v`, `-a`, `-f`, `-p`).
- - 106 tests, 1108 assertions under Address Sanitizer.
+ - **mmap-based media loading** in example server with CLI flags.
+ - **Example server** demonstrates all features: auth (`-u`), SRTP (`-s`), TLS (`-t`, `-k`), backchannel, RTCP.
+ - 134 tests, 1241 assertions under Address Sanitizer across 6 TLS configurations.
 
 ### Fixed
 
@@ -32,11 +40,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - **Session IDs** now generated from `/dev/urandom` instead of weak `rand()` (RFC 2326 Section 3.4).
  - **Controller doc comments** incorrectly said "OPTIONS" for every method handler.
  - **CMake dependencies** switched from unreachable short git hashes to URL-based tarball fetching.
+ - **SRTP ROC rollover**: rollover counter now increments when RTP sequence number wraps past 0xFFFF.
+ - **wolfSSL TLS 1.3**: use `wolfSSLv23_server_method()` instead of `wolfTLSv1_2_server_method()`.
 
 ### Changed
 
  - Renamed project from smolrtsp to compy throughout.
  - MD5 split into separate reusable module (`src/md5.c`, `include/compy/priv/md5.h`).
+ - Key material wiped with volatile zeroing on free (SRTP, SRTCP, auth).
 
 ## 0.1.3 - 2023-03-12
 

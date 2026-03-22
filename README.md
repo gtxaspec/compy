@@ -182,7 +182,7 @@ cmake -B build && cmake --build build
 ./build/tests
 ```
 
-127 tests, 1214 assertions, under Address Sanitizer.
+134 tests, 1241 assertions, under Address Sanitizer.
 
 To build with TLS/SRTP tests:
 
