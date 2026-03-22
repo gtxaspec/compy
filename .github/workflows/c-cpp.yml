@@ -30,6 +30,7 @@ jobs:
 
   test-tls-backends:
     strategy:
+      fail-fast: false
       matrix:
         backend:
           - { name: OpenSSL, flag: COMPY_TLS_OPENSSL, pkg: libssl-dev }

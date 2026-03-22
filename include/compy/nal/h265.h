@@ -24,7 +24,7 @@
  *
  * @see <https://datatracker.ietf.org/doc/html/rfc7798#section-4.4.3>
  */
-#define COMPY_H265_FU_HEADER_SIZE                                           \
+#define COMPY_H265_FU_HEADER_SIZE                                              \
     (/* payload-hdr */ sizeof(uint16_t) + /* fu-header */ sizeof(uint8_t))
 
 /**
@@ -70,32 +70,29 @@ typedef struct {
 /**
  * Parses an H.265 NAL header from @p byte_header.
  */
-Compy_H265NalHeader Compy_H265NalHeader_parse(
-    uint8_t bytes[restrict static 2]) COMPY_PRIV_MUST_USE;
+Compy_H265NalHeader
+Compy_H265NalHeader_parse(uint8_t bytes[restrict static 2]) COMPY_PRIV_MUST_USE;
 
 /**
  * Converts @p self to a two-octet representation.
  */
-uint16_t Compy_H265NalHeader_serialize(Compy_H265NalHeader self)
-    COMPY_PRIV_MUST_USE;
+uint16_t
+Compy_H265NalHeader_serialize(Compy_H265NalHeader self) COMPY_PRIV_MUST_USE;
 
 /**
  * Checks whether @p self is VPS.
  */
-bool Compy_H265NalHeader_is_vps(Compy_H265NalHeader self)
-    COMPY_PRIV_MUST_USE;
+bool Compy_H265NalHeader_is_vps(Compy_H265NalHeader self) COMPY_PRIV_MUST_USE;
 
 /**
  * Checks whether @p self is SPS.
  */
-bool Compy_H265NalHeader_is_sps(Compy_H265NalHeader self)
-    COMPY_PRIV_MUST_USE;
+bool Compy_H265NalHeader_is_sps(Compy_H265NalHeader self) COMPY_PRIV_MUST_USE;
 
 /**
  * Checks whether @p self is PPS.
  */
-bool Compy_H265NalHeader_is_pps(Compy_H265NalHeader self)
-    COMPY_PRIV_MUST_USE;
+bool Compy_H265NalHeader_is_pps(Compy_H265NalHeader self) COMPY_PRIV_MUST_USE;
 
 /**
  * Checks whether @p self is a coded slice IDR.
@@ -121,8 +118,8 @@ bool Compy_H265NalHeader_is_coded_slice_non_idr(Compy_H265NalHeader self)
  * @see <https://datatracker.ietf.org/doc/html/rfc7798#section-4.4.3>
  */
 void Compy_H265NalHeader_write_fu_header(
-    Compy_H265NalHeader self, uint8_t buffer[restrict],
-    bool is_first_fragment, bool is_last_fragment);
+    Compy_H265NalHeader self, uint8_t buffer[restrict], bool is_first_fragment,
+    bool is_last_fragment);
 
 /**
  * Coded slice segment of a non-TSA, non-STSA trailing picture.

@@ -25,7 +25,7 @@
  *
  * @see <https://datatracker.ietf.org/doc/html/rfc6184#section-5.8>
  */
-#define COMPY_H264_FU_HEADER_SIZE                                           \
+#define COMPY_H264_FU_HEADER_SIZE                                              \
     (/* fu-identifier */ sizeof(uint8_t) + /* fu-header */ sizeof(uint8_t))
 
 /**
@@ -72,26 +72,23 @@ Compy_H264NalHeader_parse(uint8_t byte_header) COMPY_PRIV_MUST_USE;
 /**
  * Converts @p self to a single octet representation.
  */
-uint8_t Compy_H264NalHeader_serialize(Compy_H264NalHeader self)
-    COMPY_PRIV_MUST_USE;
+uint8_t
+Compy_H264NalHeader_serialize(Compy_H264NalHeader self) COMPY_PRIV_MUST_USE;
 
 /**
  * Checks whether @p self is VPS.
  */
-bool Compy_H264NalHeader_is_vps(Compy_H264NalHeader self)
-    COMPY_PRIV_MUST_USE;
+bool Compy_H264NalHeader_is_vps(Compy_H264NalHeader self) COMPY_PRIV_MUST_USE;
 
 /**
  * Checks whether @p self is SPS.
  */
-bool Compy_H264NalHeader_is_sps(Compy_H264NalHeader self)
-    COMPY_PRIV_MUST_USE;
+bool Compy_H264NalHeader_is_sps(Compy_H264NalHeader self) COMPY_PRIV_MUST_USE;
 
 /**
  * Checks whether @p self is PPS.
  */
-bool Compy_H264NalHeader_is_pps(Compy_H264NalHeader self)
-    COMPY_PRIV_MUST_USE;
+bool Compy_H264NalHeader_is_pps(Compy_H264NalHeader self) COMPY_PRIV_MUST_USE;
 
 /**
  * Checks whether @p self is a coded slice IDR.
@@ -117,8 +114,8 @@ bool Compy_H264NalHeader_is_coded_slice_non_idr(Compy_H264NalHeader self)
  * @see <https://datatracker.ietf.org/doc/html/rfc6184#section-5.8>
  */
 void Compy_H264NalHeader_write_fu_header(
-    Compy_H264NalHeader self, uint8_t buffer[restrict],
-    bool is_first_fragment, bool is_last_fragment);
+    Compy_H264NalHeader self, uint8_t buffer[restrict], bool is_first_fragment,
+    bool is_last_fragment);
 
 /**
  * Unspecified.
