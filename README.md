@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="media/logo.png" alt="Compy" width="174">
+  <img src="media/logo.png" alt="Compy" width="300">
 </p>
 
 # Compy
