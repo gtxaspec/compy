@@ -7,12 +7,6 @@
  *     -acodec pcm_mulaw -f mulaw -ar 8000 -ac 1 audio.g711a \
  *     -vcodec h264 -x264opts aud=1 video.h264
  *
- * NOTE: This example binds to IPv4 only (AF_INET). The compy library
- * fully supports IPv6 — to add dual-stack support, replace the
- * sockaddr_in listener with sockaddr_in6 + IPV6_V6ONLY=0, and update
- * the SDP origin/connection lines from "IN IP4" to "IN IP6" when
- * serving IPv6 clients.
- *
  * [1] https://libevent.org/
  */
 
@@ -334,17 +328,44 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    struct sockaddr_in sin = {
-        .sin_family = AF_INET,
-        .sin_port = htons(port),
+    /* Dual-stack IPv6 socket: accepts both IPv4 and IPv6 connections */
+    int listen_fd = socket(AF_INET6, SOCK_STREAM, 0);
+    if (listen_fd == -1) {
+        perror("socket");
+        return EXIT_FAILURE;
+    }
+
+    {
+        int opt = 1;
+        setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof opt);
+        opt = 0;
+        setsockopt(listen_fd, IPPROTO_IPV6, IPV6_V6ONLY, &opt, sizeof opt);
+    }
+
+    struct sockaddr_in6 sin6 = {
+        .sin6_family = AF_INET6,
+        .sin6_port = htons(port),
+        .sin6_addr = in6addr_any,
     };
 
+    if (bind(listen_fd, (struct sockaddr *)&sin6, sizeof sin6) == -1) {
+        perror("bind");
+        close(listen_fd);
+        return EXIT_FAILURE;
+    }
+
+    if (listen(listen_fd, 128) == -1) {
+        perror("listen");
+        close(listen_fd);
+        return EXIT_FAILURE;
+    }
+
     struct evconnlistener *listener;
-    if ((listener = evconnlistener_new_bind(
-             base, listener_cb, (void *)base,
-             LEV_OPT_REUSEABLE | LEV_OPT_CLOSE_ON_FREE, -1,
-             (struct sockaddr *)&sin, sizeof sin)) == NULL) {
-        fputs("evconnlistener_new_bind failed.\n", stderr);
+    if ((listener = evconnlistener_new(
+             base, listener_cb, (void *)base, LEV_OPT_CLOSE_ON_FREE, 0,
+             listen_fd)) == NULL) {
+        fputs("evconnlistener_new failed.\n", stderr);
+        close(listen_fd);
         return EXIT_FAILURE;
     }
 
@@ -498,13 +519,16 @@ Client_describe(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     Compy_Writer sdp = compy_string_writer(sdp_buf);
     ssize_t ret = 0;
 
+    const char *ip_ver = self->addr.ss_family == AF_INET6 ? "IP6" : "IP4";
+    const char *ip_any = self->addr.ss_family == AF_INET6 ? "::" : "0.0.0.0";
+
     // clang-format off
     COMPY_SDP_DESCRIBE(
         ret, sdp,
         (COMPY_SDP_VERSION, "0"),
-        (COMPY_SDP_ORIGIN, "Compy 3855320066 3855320129 IN IP4 0.0.0.0"),
+        (COMPY_SDP_ORIGIN, "Compy 3855320066 3855320129 IN %s %s", ip_ver, ip_any),
         (COMPY_SDP_SESSION_NAME, "Compy example"),
-        (COMPY_SDP_CONNECTION, "IN IP4 0.0.0.0"),
+        (COMPY_SDP_CONNECTION, "IN %s %s", ip_ver, ip_any),
         (COMPY_SDP_TIME, "0 0"));
 
 #ifdef ENABLE_VIDEO
