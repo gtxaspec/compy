@@ -7,6 +7,12 @@
  *     -acodec pcm_mulaw -f mulaw -ar 8000 -ac 1 audio.g711a \
  *     -vcodec h264 -x264opts aud=1 video.h264
  *
+ * NOTE: This example binds to IPv4 only (AF_INET). The compy library
+ * fully supports IPv6 — to add dual-stack support, replace the
+ * sockaddr_in listener with sockaddr_in6 + IPV6_V6ONLY=0, and update
+ * the SDP origin/connection lines from "IN IP4" to "IN IP6" when
+ * serving IPv6 clients.
+ *
  * [1] https://libevent.org/
  */
 
