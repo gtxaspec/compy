@@ -94,6 +94,13 @@ bool Compy_RtpTransport_is_full(Compy_RtpTransport *self);
 uint32_t Compy_RtpTransport_get_ssrc(const Compy_RtpTransport *self);
 
 /**
+ * Returns the current RTP sequence number of this transport.
+ *
+ * @pre `self != NULL`
+ */
+uint16_t Compy_RtpTransport_get_seq(const Compy_RtpTransport *self);
+
+/**
  * Returns the total number of RTP packets sent.
  *
  * @pre `self != NULL`

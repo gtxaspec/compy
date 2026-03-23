@@ -121,6 +121,11 @@ uint32_t Compy_RtpTransport_get_ssrc(const Compy_RtpTransport *self) {
     return self->ssrc;
 }
 
+uint16_t Compy_RtpTransport_get_seq(const Compy_RtpTransport *self) {
+    assert(self);
+    return self->seq_num;
+}
+
 uint32_t Compy_RtpTransport_get_packet_count(const Compy_RtpTransport *self) {
     assert(self);
     return self->packet_count;
