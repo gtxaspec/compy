@@ -218,7 +218,27 @@ compy_header(ctx, COMPY_HEADER_SESSION, "%" PRIu64 ";timeout=60", session_id);
 compy_respond_ok(ctx);
 ```
 
-### 6. Send video frames
+### 6. Handle PLAY
+
+Start streaming and include RTP-Info header per RFC 2326 Section 12.33:
+
+```c
+// In the PLAY handler, after starting stream timers:
+compy_header(ctx, COMPY_HEADER_RTP_INFO,
+    "url=rtsp://%s/video;seq=%u;rtptime=%u,"
+    "url=rtsp://%s/audio;seq=%u;rtptime=%u",
+    host,
+    Compy_RtpTransport_get_seq(video_rtp),
+    Compy_RtpTransport_get_last_rtp_timestamp(video_rtp),
+    host,
+    Compy_RtpTransport_get_seq(audio_rtp),
+    Compy_RtpTransport_get_last_rtp_timestamp(audio_rtp));
+compy_header(ctx, COMPY_HEADER_RANGE, "npt=now-");
+compy_header(ctx, COMPY_HEADER_SESSION, "%" PRIu64 ";timeout=60", session_id);
+compy_respond_ok(ctx);
+```
+
+### 7. Send video frames
 
 When the encoder produces a frame:
 
@@ -236,7 +256,7 @@ Compy_NalTransport_send_packet(nal, Compy_RtpTimestamp_Raw(pts), nalu);
 // Compy handles fragmentation automatically
 ```
 
-### 7. Send audio
+### 8. Send audio
 
 ```c
 // G.711 PCMU at 8kHz, 160 samples per packet (20ms)
@@ -246,7 +266,7 @@ Compy_RtpTransport_send_packet(
     U8Slice99_new(pcmu_data, 160));
 ```
 
-### 8. RTCP Sender Reports
+### 9. RTCP Sender Reports
 
 Call periodically (every 5 seconds):
 
@@ -260,7 +280,7 @@ On session teardown:
 Compy_Rtcp_send_bye(rtcp);
 ```
 
-### 9. Authentication
+### 10. Authentication
 
 ```c
 // Credential lookup callback
@@ -281,7 +301,7 @@ if (compy_auth_check(auth, ctx, req) != 0) {
 }
 ```
 
-### 10. RTSPS (TLS)
+### 11. RTSPS (TLS)
 
 ```c
 #ifdef COMPY_HAS_TLS
@@ -297,7 +317,7 @@ ssize_t n = compy_tls_read(conn, buf, sizeof buf);
 #endif
 ```
 
-### 11. Backchannel (receive audio)
+### 12. Backchannel (receive audio)
 
 ```c
 // Implement AudioReceiver interface
