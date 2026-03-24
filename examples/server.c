@@ -58,6 +58,84 @@ static bool g_srtp_enabled = false;
 static Compy_SrtpKeyMaterial g_srtp_key;
 #endif
 
+/* Pre-indexed NAL unit table (built once at startup) */
+typedef struct {
+    uint8_t *data;    /* pointer to first byte after start code (NAL header) */
+    size_t len;       /* length of NAL unit (header + payload, no start code) */
+    uint8_t nal_type; /* H.264 NAL unit type */
+} NalEntry;
+
+static NalEntry *g_nal_table = NULL;
+static size_t g_nal_count = 0;
+static size_t g_nal_start_idx = 0; /* index of first SPS for clean start */
+
+static void build_nal_index(void) {
+    if (!media_video || media_video_len == 0)
+        return;
+
+    U8Slice99 video = U8Slice99_new(media_video, media_video_len);
+    Compy_NalStartCodeTester tester = compy_determine_start_code(video);
+    if (!tester)
+        return;
+
+    /* First pass: count NALs */
+    size_t count = 0;
+    U8Slice99 scan = video;
+    while (!U8Slice99_is_empty(scan)) {
+        size_t sc = tester(scan);
+        if (sc > 0) {
+            count++;
+            scan = U8Slice99_advance(scan, sc);
+        } else {
+            scan = U8Slice99_advance(scan, 1);
+        }
+    }
+
+    g_nal_table = malloc(count * sizeof(NalEntry));
+    assert(g_nal_table);
+
+    /* Second pass: record offsets */
+    scan = video;
+    size_t idx = 0;
+    uint8_t *prev_nal = NULL;
+    while (!U8Slice99_is_empty(scan)) {
+        size_t sc = tester(scan);
+        if (sc > 0) {
+            if (prev_nal && idx > 0) {
+                g_nal_table[idx - 1].len = (size_t)(scan.ptr - prev_nal);
+            }
+            scan = U8Slice99_advance(scan, sc);
+            prev_nal = scan.ptr;
+            g_nal_table[idx].data = scan.ptr;
+            g_nal_table[idx].nal_type = scan.ptr[0] & 0x1F;
+            g_nal_table[idx].len = 0;
+            idx++;
+        } else {
+            scan = U8Slice99_advance(scan, 1);
+        }
+    }
+    /* Last NAL extends to end of file */
+    if (idx > 0 && prev_nal) {
+        g_nal_table[idx - 1].len =
+            (size_t)(media_video + media_video_len - prev_nal);
+    }
+    g_nal_count = idx;
+
+    /* Find first SPS for clean decoder start */
+    g_nal_start_idx = 0;
+    for (size_t i = 0; i < g_nal_count; i++) {
+        if (g_nal_table[i].nal_type == COMPY_H264_NAL_UNIT_SPS) {
+            g_nal_start_idx = i;
+            break;
+        }
+    }
+
+    printf(
+        "Indexed %zu NALs (starting at #%zu, type %u)\n", g_nal_count,
+        g_nal_start_idx,
+        g_nal_count > 0 ? g_nal_table[g_nal_start_idx].nal_type : 0);
+}
+
 static int mmap_file(const char *path, uint8_t **out, size_t *out_len) {
     int fd = open(path, O_RDONLY);
     if (fd == -1) {
@@ -182,14 +260,12 @@ static void send_audio_packet_cb(evutil_socket_t fd, short events, void *arg);
 
 typedef struct {
     Compy_NalTransport *transport;
-    Compy_NalStartCodeTester start_code_tester;
     uint32_t timestamp;
-    U8Slice99 video;
-    uint8_t *nalu_start;
+    size_t nal_idx;    /* current index into g_nal_table */
+    bool last_was_vcl; /* track VCL/non-VCL transitions for frame detection */
     struct event *ev;
     struct bufferevent *bev;
     int *streams_playing;
-    bool last_was_vcl; /* track VCL/non-VCL transitions for frame detection */
 } VideoCtx;
 
 static Compy_Droppable play_video(
@@ -322,6 +398,8 @@ int main(int argc, char *argv[]) {
         "Loaded audio: %s (%zu bytes)\n",
         video_path, media_video_len, media_video_fps, audio_path,
         media_audio_len);
+
+    build_nal_index();
 
     struct event_base *base;
     if ((base = event_base_new()) == NULL) {
@@ -1013,44 +1091,15 @@ impl(Compy_Droppable, VideoCtx);
 static Compy_Droppable play_video(
     struct event_base *base, struct bufferevent *bev, Compy_RtpTransport *t,
     struct event **ev, int *streams_playing) {
-    U8Slice99 video = U8Slice99_new(media_video, media_video_len);
-
-    Compy_NalStartCodeTester start_code_tester;
-    if ((start_code_tester = compy_determine_start_code(video)) == NULL) {
-        fputs("Invalid video file.\n", stderr);
-        abort();
-    }
-
-    /* Seek to the first SPS NAL (type 7) so the client gets a clean
-     * decoder init sequence (SPS → PPS → IDR) on connect. */
-    {
-        U8Slice99 scan = video;
-        while (!U8Slice99_is_empty(scan)) {
-            size_t sc_len = start_code_tester(scan);
-            if (sc_len > 0) {
-                uint8_t nal_type = scan.ptr[sc_len] & 0x1F;
-                if (nal_type == COMPY_H264_NAL_UNIT_SPS) {
-                    video = scan;
-                    break;
-                }
-                scan = U8Slice99_advance(scan, sc_len);
-            } else {
-                scan = U8Slice99_advance(scan, 1);
-            }
-        }
-    }
-
     VideoCtx *ctx = malloc(sizeof *ctx);
     assert(ctx);
     *ctx = (VideoCtx){
         .transport = Compy_NalTransport_new(t),
-        .start_code_tester = start_code_tester,
         .timestamp = 0,
-        .video = video,
-        .nalu_start = NULL,
+        .nal_idx = g_nal_start_idx,
+        .last_was_vcl = false,
         .ev = NULL,
         .bev = bev,
-        .last_was_vcl = false,
         .streams_playing = streams_playing,
     };
 
@@ -1075,67 +1124,54 @@ static void send_video_packet_cb(evutil_socket_t fd, short events, void *arg) {
 
     VideoCtx *ctx = arg;
 
-again:
-    if (U8Slice99_is_empty(ctx->video)) {
-        send_nalu(ctx);
+    /* Send all NALs for one frame (until next access unit boundary) */
+    while (ctx->nal_idx < g_nal_count) {
+        NalEntry *nal = &g_nal_table[ctx->nal_idx];
+        uint8_t nal_type = nal->nal_type;
+        bool is_vcl = (nal_type >= 1 && nal_type <= 5);
+
+        /* Detect new access unit */
+        if (nal_type == COMPY_H264_NAL_UNIT_AUD) {
+            ctx->timestamp += VIDEO_SAMPLE_RATE / media_video_fps;
+            ctx->last_was_vcl = false;
+            ctx->nal_idx++;
+            break; /* Frame boundary — wait for next timer tick */
+        } else if (is_vcl && !ctx->last_was_vcl) {
+            if (ctx->nal_idx > g_nal_start_idx) {
+                /* Not the very first NAL — this is a new frame */
+                ctx->timestamp += VIDEO_SAMPLE_RATE / media_video_fps;
+            }
+        }
+
+        ctx->last_was_vcl = is_vcl;
+
+        /* Send this NAL */
+        Compy_NalUnit nalu = {
+            .header =
+                Compy_NalHeader_H264(Compy_H264NalHeader_parse(nal->data[0])),
+            .payload = U8Slice99_new(nal->data + 1, nal->len - 1),
+        };
+
+        if (Compy_NalTransport_send_packet(
+                ctx->transport, Compy_RtpTimestamp_Raw(ctx->timestamp), nalu) ==
+            -1) {
+            perror("Failed to send RTP/NAL");
+        }
+
+        ctx->nal_idx++;
+
+        /* If we just sent a VCL NAL and the next one starts a new AU, break */
+        if (is_vcl && ctx->nal_idx < g_nal_count) {
+            NalEntry *next = &g_nal_table[ctx->nal_idx];
+            bool next_is_vcl = (next->nal_type >= 1 && next->nal_type <= 5);
+            if (!next_is_vcl || next->nal_type == COMPY_H264_NAL_UNIT_AUD) {
+                break; /* Non-VCL or AUD next — frame boundary */
+            }
+        }
+    }
+
+    if (ctx->nal_idx >= g_nal_count) {
         event_del(ctx->ev);
         (*ctx->streams_playing)--;
-        if (0 == *ctx->streams_playing) {
-            /* Media finished — stop sending but keep connection alive.
-             * Client will disconnect via TEARDOWN or TCP close. */
-        }
-        return;
     }
-
-    const size_t start_code_len = ctx->start_code_tester(ctx->video);
-    if (0 == start_code_len) {
-        ctx->video = U8Slice99_advance(ctx->video, 1);
-        goto again;
-    }
-
-    bool au_found = false;
-    if (NULL != ctx->nalu_start) {
-        au_found = send_nalu(ctx);
-    }
-
-    ctx->video = U8Slice99_advance(ctx->video, start_code_len);
-    ctx->nalu_start = ctx->video.ptr;
-
-    if (!au_found) {
-        goto again;
-    }
-}
-
-static bool send_nalu(VideoCtx *ctx) {
-    const Compy_NalUnit nalu = {
-        .header =
-            Compy_NalHeader_H264(Compy_H264NalHeader_parse(ctx->nalu_start[0])),
-        .payload = U8Slice99_from_ptrdiff(ctx->nalu_start + 1, ctx->video.ptr),
-    };
-
-    bool au_found = false;
-    uint8_t nal_type = Compy_NalHeader_unit_type(nalu.header);
-
-    /* VCL NAL types 1-5 carry actual coded slices */
-    bool is_vcl = (nal_type >= 1 && nal_type <= 5);
-
-    if (nal_type == COMPY_H264_NAL_UNIT_AUD) {
-        /* Explicit AUD — always a new access unit */
-        ctx->timestamp += VIDEO_SAMPLE_RATE / media_video_fps;
-        au_found = true;
-    } else if (is_vcl && !ctx->last_was_vcl) {
-        /* VCL after non-VCL — new access unit (for streams without AUDs) */
-        ctx->timestamp += VIDEO_SAMPLE_RATE / media_video_fps;
-        au_found = true;
-    }
-
-    ctx->last_was_vcl = is_vcl;
-
-    if (Compy_NalTransport_send_packet(
-            ctx->transport, Compy_RtpTimestamp_Raw(ctx->timestamp), nalu) ==
-        -1) {
-        perror("Failed to send RTP/NAL");
-    }
-
-    return au_found;
 }
