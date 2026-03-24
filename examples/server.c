@@ -261,8 +261,7 @@ static void send_audio_packet_cb(evutil_socket_t fd, short events, void *arg);
 typedef struct {
     Compy_NalTransport *transport;
     uint32_t timestamp;
-    size_t nal_idx;    /* current index into g_nal_table */
-    bool last_was_vcl; /* track VCL/non-VCL transitions for frame detection */
+    size_t nal_idx; /* current index into g_nal_table */
     struct event *ev;
     struct bufferevent *bev;
     int *streams_playing;
@@ -1097,7 +1096,6 @@ static Compy_Droppable play_video(
         .transport = Compy_NalTransport_new(t),
         .timestamp = 0,
         .nal_idx = g_nal_start_idx,
-        .last_was_vcl = false,
         .ev = NULL,
         .bev = bev,
         .streams_playing = streams_playing,
@@ -1124,50 +1122,53 @@ static void send_video_packet_cb(evutil_socket_t fd, short events, void *arg) {
 
     VideoCtx *ctx = arg;
 
-    /* Send all NALs for one frame (until next access unit boundary) */
+    /*
+     * Send one frame per timer tick:
+     * 1. Send any leading non-VCL NALs (SPS/PPS/SEI) with current timestamp
+     * 2. Send exactly one VCL NAL (one picture)
+     * 3. Increment timestamp for the next frame
+     */
+
+    /* Send leading non-VCL NALs */
     while (ctx->nal_idx < g_nal_count) {
         NalEntry *nal = &g_nal_table[ctx->nal_idx];
-        uint8_t nal_type = nal->nal_type;
-        bool is_vcl = (nal_type >= 1 && nal_type <= 5);
+        bool is_vcl = (nal->nal_type >= 1 && nal->nal_type <= 5);
 
-        /* Detect new access unit */
-        if (nal_type == COMPY_H264_NAL_UNIT_AUD) {
-            ctx->timestamp += VIDEO_SAMPLE_RATE / media_video_fps;
-            ctx->last_was_vcl = false;
+        if (nal->nal_type == COMPY_H264_NAL_UNIT_AUD) {
             ctx->nal_idx++;
-            break; /* Frame boundary — wait for next timer tick */
-        } else if (is_vcl && !ctx->last_was_vcl) {
-            if (ctx->nal_idx > g_nal_start_idx) {
-                /* Not the very first NAL — this is a new frame */
-                ctx->timestamp += VIDEO_SAMPLE_RATE / media_video_fps;
-            }
+            continue;
         }
+        if (is_vcl)
+            break;
 
-        ctx->last_was_vcl = is_vcl;
-
-        /* Send this NAL */
         Compy_NalUnit nalu = {
             .header =
                 Compy_NalHeader_H264(Compy_H264NalHeader_parse(nal->data[0])),
             .payload = U8Slice99_new(nal->data + 1, nal->len - 1),
         };
-
         if (Compy_NalTransport_send_packet(
                 ctx->transport, Compy_RtpTimestamp_Raw(ctx->timestamp), nalu) ==
             -1) {
             perror("Failed to send RTP/NAL");
         }
-
         ctx->nal_idx++;
+    }
 
-        /* If we just sent a VCL NAL and the next one starts a new AU, break */
-        if (is_vcl && ctx->nal_idx < g_nal_count) {
-            NalEntry *next = &g_nal_table[ctx->nal_idx];
-            bool next_is_vcl = (next->nal_type >= 1 && next->nal_type <= 5);
-            if (!next_is_vcl || next->nal_type == COMPY_H264_NAL_UNIT_AUD) {
-                break; /* Non-VCL or AUD next — frame boundary */
-            }
+    /* Send one VCL NAL (one picture) */
+    if (ctx->nal_idx < g_nal_count) {
+        NalEntry *nal = &g_nal_table[ctx->nal_idx];
+        Compy_NalUnit nalu = {
+            .header =
+                Compy_NalHeader_H264(Compy_H264NalHeader_parse(nal->data[0])),
+            .payload = U8Slice99_new(nal->data + 1, nal->len - 1),
+        };
+        if (Compy_NalTransport_send_packet(
+                ctx->transport, Compy_RtpTimestamp_Raw(ctx->timestamp), nalu) ==
+            -1) {
+            perror("Failed to send RTP/NAL");
         }
+        ctx->nal_idx++;
+        ctx->timestamp += VIDEO_SAMPLE_RATE / media_video_fps;
     }
 
     if (ctx->nal_idx >= g_nal_count) {
