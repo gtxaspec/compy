@@ -471,10 +471,16 @@ static void Client_drop(VSelf) {
     VSELF(Client);
 
     for (size_t i = 0; i < MAX_STREAMS; i++) {
+        /* Stop stream timer first to prevent callbacks on freed memory */
+        if (self->streams[i].ev) {
+            event_del(self->streams[i].ev);
+        }
+
         if (self->streams[i].rtcp) {
             int bye_ret __attribute__((unused)) =
                 Compy_Rtcp_send_bye(self->streams[i].rtcp);
             if (self->streams[i].rtcp_ev) {
+                event_del(self->streams[i].rtcp_ev);
                 event_free(self->streams[i].rtcp_ev);
             }
             VCALL(
@@ -970,7 +976,8 @@ static void send_audio_packet_cb(evutil_socket_t fd, short events, void *arg) {
         event_del(ctx->ev);
         (*ctx->streams_playing)--;
         if (0 == *ctx->streams_playing) {
-            bufferevent_trigger_event(ctx->bev, BEV_EVENT_EOF, 0);
+            /* Media finished — stop sending but keep connection alive.
+             * Client will disconnect via TEARDOWN or TCP close. */
         }
         return;
     }
@@ -1057,7 +1064,8 @@ again:
         event_del(ctx->ev);
         (*ctx->streams_playing)--;
         if (0 == *ctx->streams_playing) {
-            bufferevent_trigger_event(ctx->bev, BEV_EVENT_EOF, 0);
+            /* Media finished — stop sending but keep connection alive.
+             * Client will disconnect via TEARDOWN or TCP close. */
         }
         return;
     }
