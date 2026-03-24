@@ -1021,6 +1021,25 @@ static Compy_Droppable play_video(
         abort();
     }
 
+    /* Seek to the first SPS NAL (type 7) so the client gets a clean
+     * decoder init sequence (SPS → PPS → IDR) on connect. */
+    {
+        U8Slice99 scan = video;
+        while (!U8Slice99_is_empty(scan)) {
+            size_t sc_len = start_code_tester(scan);
+            if (sc_len > 0) {
+                uint8_t nal_type = scan.ptr[sc_len] & 0x1F;
+                if (nal_type == COMPY_H264_NAL_UNIT_SPS) {
+                    video = scan;
+                    break;
+                }
+                scan = U8Slice99_advance(scan, sc_len);
+            } else {
+                scan = U8Slice99_advance(scan, 1);
+            }
+        }
+    }
+
     VideoCtx *ctx = malloc(sizeof *ctx);
     assert(ctx);
     *ctx = (VideoCtx){
