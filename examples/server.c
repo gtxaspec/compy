@@ -189,6 +189,7 @@ typedef struct {
     struct event *ev;
     struct bufferevent *bev;
     int *streams_playing;
+    bool last_was_vcl; /* track VCL/non-VCL transitions for frame detection */
 } VideoCtx;
 
 static Compy_Droppable play_video(
@@ -328,44 +329,33 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    /* Dual-stack IPv6 socket: accepts both IPv4 and IPv6 connections */
-    int listen_fd = socket(AF_INET6, SOCK_STREAM, 0);
-    if (listen_fd == -1) {
-        perror("socket");
-        return EXIT_FAILURE;
-    }
-
-    {
-        int opt = 1;
-        setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof opt);
-        opt = 0;
-        setsockopt(listen_fd, IPPROTO_IPV6, IPV6_V6ONLY, &opt, sizeof opt);
-    }
-
+    /* Dual-stack: try IPv6 first, fall back to IPv4 */
     struct sockaddr_in6 sin6 = {
         .sin6_family = AF_INET6,
         .sin6_port = htons(port),
         .sin6_addr = in6addr_any,
     };
 
-    if (bind(listen_fd, (struct sockaddr *)&sin6, sizeof sin6) == -1) {
-        perror("bind");
-        close(listen_fd);
-        return EXIT_FAILURE;
-    }
-
-    if (listen(listen_fd, 128) == -1) {
-        perror("listen");
-        close(listen_fd);
-        return EXIT_FAILURE;
-    }
-
     struct evconnlistener *listener;
-    if ((listener = evconnlistener_new(
-             base, listener_cb, (void *)base, LEV_OPT_CLOSE_ON_FREE, 0,
-             listen_fd)) == NULL) {
-        fputs("evconnlistener_new failed.\n", stderr);
-        close(listen_fd);
+    listener = evconnlistener_new_bind(
+        base, listener_cb, (void *)base,
+        LEV_OPT_REUSEABLE | LEV_OPT_CLOSE_ON_FREE, -1, (struct sockaddr *)&sin6,
+        sizeof sin6);
+
+    if (listener == NULL) {
+        /* IPv6 failed, try IPv4 */
+        struct sockaddr_in sin4 = {
+            .sin_family = AF_INET,
+            .sin_port = htons(port),
+        };
+        listener = evconnlistener_new_bind(
+            base, listener_cb, (void *)base,
+            LEV_OPT_REUSEABLE | LEV_OPT_CLOSE_ON_FREE, -1,
+            (struct sockaddr *)&sin4, sizeof sin4);
+    }
+
+    if (listener == NULL) {
+        fputs("evconnlistener_new_bind failed.\n", stderr);
         return EXIT_FAILURE;
     }
 
@@ -525,8 +515,15 @@ Client_describe(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     Compy_Writer sdp = compy_string_writer(sdp_buf);
     ssize_t ret = 0;
 
-    const char *ip_ver = self->addr.ss_family == AF_INET6 ? "IP6" : "IP4";
-    const char *ip_any = self->addr.ss_family == AF_INET6 ? "::" : "0.0.0.0";
+    /* Detect true IPv6 vs IPv4-mapped IPv6 (::ffff:x.x.x.x) */
+    bool is_ipv6 = false;
+    if (self->addr.ss_family == AF_INET6) {
+        const struct sockaddr_in6 *a6 =
+            (const struct sockaddr_in6 *)&self->addr;
+        is_ipv6 = !IN6_IS_ADDR_V4MAPPED(&a6->sin6_addr);
+    }
+    const char *ip_ver = is_ipv6 ? "IP6" : "IP4";
+    const char *ip_any = is_ipv6 ? "::" : "0.0.0.0";
 
     // clang-format off
     COMPY_SDP_DESCRIBE(
@@ -1034,6 +1031,7 @@ static Compy_Droppable play_video(
         .nalu_start = NULL,
         .ev = NULL,
         .bev = bev,
+        .last_was_vcl = false,
         .streams_playing = streams_playing,
     };
 
@@ -1097,11 +1095,22 @@ static bool send_nalu(VideoCtx *ctx) {
     };
 
     bool au_found = false;
+    uint8_t nal_type = Compy_NalHeader_unit_type(nalu.header);
 
-    if (Compy_NalHeader_unit_type(nalu.header) == COMPY_H264_NAL_UNIT_AUD) {
+    /* VCL NAL types 1-5 carry actual coded slices */
+    bool is_vcl = (nal_type >= 1 && nal_type <= 5);
+
+    if (nal_type == COMPY_H264_NAL_UNIT_AUD) {
+        /* Explicit AUD — always a new access unit */
+        ctx->timestamp += VIDEO_SAMPLE_RATE / media_video_fps;
+        au_found = true;
+    } else if (is_vcl && !ctx->last_was_vcl) {
+        /* VCL after non-VCL — new access unit (for streams without AUDs) */
         ctx->timestamp += VIDEO_SAMPLE_RATE / media_video_fps;
         au_found = true;
     }
+
+    ctx->last_was_vcl = is_vcl;
 
     if (Compy_NalTransport_send_packet(
             ctx->transport, Compy_RtpTimestamp_Raw(ctx->timestamp), nalu) ==
