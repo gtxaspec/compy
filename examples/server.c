@@ -271,7 +271,6 @@ static Compy_Droppable play_video(
     struct event_base *base, struct bufferevent *bev, Compy_RtpTransport *t,
     struct event **ev, int *streams_playing);
 static void send_video_packet_cb(evutil_socket_t fd, short events, void *arg);
-static bool send_nalu(VideoCtx *ctx);
 
 /* Auth credential lookup callback */
 static bool auth_lookup(
@@ -642,9 +641,11 @@ Client_describe(VSelf, Compy_Context *ctx, const Compy_Request *req) {
 #ifdef COMPY_HAS_TLS
     if (g_srtp_enabled) {
         char crypto_attr[128];
-        compy_srtp_format_crypto_attr(
-            crypto_attr, sizeof crypto_attr, 1,
-            Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &g_srtp_key);
+        if (compy_srtp_format_crypto_attr(
+                crypto_attr, sizeof crypto_attr, 1,
+                Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &g_srtp_key) < 0) {
+            fprintf(stderr, "Failed to format SRTP crypto attribute\n");
+        }
         COMPY_SDP_DESCRIBE(
             ret, sdp,
             (COMPY_SDP_ATTR, "crypto:%s", crypto_attr));

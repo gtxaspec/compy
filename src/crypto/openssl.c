@@ -131,6 +131,8 @@ static size_t ossl_pending(Compy_CryptoTlsConn *conn) {
 static void
 ossl_aes128_ecb(const uint8_t key[16], const uint8_t in[16], uint8_t out[16]) {
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (!ctx)
+        return;
     EVP_EncryptInit_ex(ctx, EVP_aes_128_ecb(), NULL, key, NULL);
     EVP_CIPHER_CTX_set_padding(ctx, 0);
 

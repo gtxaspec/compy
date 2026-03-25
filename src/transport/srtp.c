@@ -75,9 +75,9 @@ static void srtp_kdf(
      * x = key_id XOR master_salt (padded to 14 bytes)
      *
      * For key_derivation_rate = 0 (default): r = 0, so:
-     * x[0..5] = master_salt[0..5]
-     * x[6] = master_salt[6] ^ label
-     * x[7..13] = master_salt[7..13]
+     * x[0..6] = master_salt[0..6]
+     * x[7] = master_salt[7] ^ label
+     * x[8..13] = master_salt[8..13]
      *
      * Then AES-CM with master_key to generate output.
      */

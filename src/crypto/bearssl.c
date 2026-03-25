@@ -144,15 +144,9 @@ static size_t bear_pending(Compy_CryptoTlsConn *conn) {
 static void
 bear_aes128_ecb(const uint8_t key[16], const uint8_t in[16], uint8_t out[16]) {
     /*
-     * BearSSL doesn't have a direct ECB API. Use CTR mode with counter=0
-     * on a single block, which is equivalent to ECB for one block.
+     * BearSSL has no direct ECB API. CBC with a zero IV on a single
+     * 16-byte block is mathematically identical: C = AES(K, P ^ 0) = AES(K, P).
      */
-    br_aes_big_ctr_keys ctr;
-    br_aes_big_ctr_init(&ctr, key, 16);
-
-    /* For a single block with IV=0 and ctr=0, CTR XORs plaintext with
-     * AES(key, 0), so we pass zeros as input to get the raw keystream,
-     * then XOR manually. Simpler: just use cbcenc with zero IV. */
     br_aes_big_cbcenc_keys cbcenc;
     br_aes_big_cbcenc_init(&cbcenc, key, 16);
 
