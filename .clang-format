@@ -14,6 +14,10 @@ StatementMacros:
   [
     "vfunc99",
     "vfuncDefault99",
+    "impl",
+    "implExtern",
+    "declImpl",
+    "ifLet",
     "DEF_TEST_PARSE",
     "NAL_HEADER_DERIVE_GETTER",
     "NAL_HEADER_DERIVE_PREDICATE",
