@@ -37,6 +37,9 @@ tests/build/
 # Media test files
 examples/media/
 
+# Doxygen output
+docs/
+
 # Editor/IDE
 .vscode/
 .idea/
