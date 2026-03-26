@@ -6,10 +6,10 @@
 /**
  * @mainpage
  *
- * A small, portable, extensible RTSP 1.0 implementation in C99.<br>
+ * A lightweight RTSP 1.0 server library for embedded systems.<br>
  *
  * See the <a href="files.html">file list</a> for the available abstractions.
- * See <a href="https://github.com/Hirrolot/compy">our official GitHub
+ * See <a href="https://github.com/gtxaspec/compy">our official GitHub
  * repository</a> for a high-level overview.
  */
 
