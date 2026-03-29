@@ -32,6 +32,7 @@ A small, portable [RTSP 1.0] server library in C99, designed for embedded IP cam
    - [x] RTSPS (RTSP over TLS)
    - [x] SRTP ([RFC 3711]) — AES-128-CM + HMAC-SHA1-80/32
    - [x] SRTCP ([RFC 3711] Section 3.4)
+   - [x] RTP header extensions ([RFC 8285]) — one-byte format (e.g., sdes:mid for WebRTC BUNDLE)
  - RTP payload formats:
    - [x] H.264 ([RFC 6184]) — single NAL and FU-A fragmentation
    - [x] H.265 ([RFC 7798]) — single NAL and FU fragmentation
