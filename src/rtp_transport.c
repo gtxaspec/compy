@@ -71,7 +71,7 @@ int Compy_RtpTransport_send_packet(
         .payload_ty = self->payload_ty,
         .sequence_number = htons(self->seq_num),
         .timestamp = htobe32(compute_timestamp(ts, self->clock_rate)),
-        .ssrc = self->ssrc,
+        .ssrc = htonl(self->ssrc),
         .csrc = NULL,
         .extension_profile = htons(0xBEDE), /* RFC 8285 one-byte header */
         .extension_payload_len =

@@ -15,11 +15,10 @@
 /**
  * An RTP header.
  *
- * Multi-byte fields (sequence_number, timestamp, extension_profile) are
- * stored in network byte order and written to the wire via raw memcpy.
- * Exceptions: ssrc is in host byte order (historical); extension_payload_len
- * is in host byte order (number of 32-bit words) and converted by the
- * serializer.
+ * Multi-byte fields (sequence_number, timestamp, ssrc, extension_profile)
+ * are converted to network byte order by the serializer.
+ * Exception: extension_payload_len is in host byte order (number of 32-bit
+ * words) and converted to network byte order during serialization.
  */
 typedef struct {
     /**
