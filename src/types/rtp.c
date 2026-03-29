@@ -86,7 +86,8 @@ Compy_RtpHeader_serialize(Compy_RtpHeader self, uint8_t buffer[restrict]) {
 
     if (self.extension) {
         buffer = SLICE99_APPEND(buffer, self.extension_profile);
-        buffer = SLICE99_APPEND(buffer, self.extension_payload_len);
+        uint16_t ext_len_be = htons(self.extension_payload_len);
+        buffer = SLICE99_APPEND(buffer, ext_len_be);
 
         for (uint16_t i = 0; i < self.extension_payload_len * sizeof(uint32_t);
              i++) {

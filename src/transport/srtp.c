@@ -274,11 +274,21 @@ static int Compy_SrtpTransport_transmit(VSelf, Compy_IoVecSlice bufs) {
     /* Packet index = ROC * 65536 + SEQ */
     uint32_t index = self->roc * 65536 + seq;
 
-    /* Determine header length (12 + CSRC count * 4) */
+    /* Determine header length: 12 + CSRC + extension (RFC 3550) */
     uint8_t cc = packet[0] & 0x0F;
     size_t header_len = 12 + (size_t)cc * 4;
     if (header_len > total) {
         return -1;
+    }
+    /* If X bit is set, skip the extension header */
+    if ((packet[0] & 0x10) && header_len + 4 <= total) {
+        uint16_t ext_words;
+        memcpy(&ext_words, packet + header_len + 2, 2);
+        ext_words = ntohs(ext_words);
+        header_len += 4 + (size_t)ext_words * 4;
+        if (header_len > total) {
+            return -1;
+        }
     }
 
     /* Encrypt payload in-place (everything after the RTP header) */

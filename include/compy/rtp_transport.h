@@ -94,6 +94,34 @@ bool Compy_RtpTransport_is_full(Compy_RtpTransport *self);
 uint32_t Compy_RtpTransport_get_ssrc(const Compy_RtpTransport *self);
 
 /**
+ * Sets the SSRC identifier of this transport.
+ *
+ * Call before sending any packets. Used when the SSRC must match
+ * a value declared in the SDP (e.g., WebRTC a=ssrc lines).
+ *
+ * @pre `self != NULL`
+ */
+void Compy_RtpTransport_set_ssrc(Compy_RtpTransport *self, uint32_t ssrc);
+
+/**
+ * Sets a persistent one-byte RTP header extension (RFC 8285).
+ *
+ * The extension is included in every outgoing packet. Profile is
+ * 0xBEDE (one-byte header format). The extension element is:
+ * [id(4 bits) | len-1(4 bits) | value(len bytes)].
+ *
+ * @param[in] id Extension ID (1-14).
+ * @param[in] value Extension value bytes.
+ * @param[in] len Length of value (1-8 bytes).
+ *
+ * @pre `self != NULL`
+ * @pre `id >= 1 && id <= 14`
+ * @pre `len >= 1 && len <= 8`
+ */
+void Compy_RtpTransport_set_extension(
+    Compy_RtpTransport *self, uint8_t id, const uint8_t *value, uint8_t len);
+
+/**
  * Returns the current RTP sequence number of this transport.
  *
  * @pre `self != NULL`

@@ -17,6 +17,10 @@ struct Compy_RtpTransport {
     uint32_t packet_count;
     uint32_t octet_count;
     uint32_t last_rtp_timestamp;
+
+    /* Optional one-byte header extension (RFC 8285) */
+    uint8_t ext_data[8]; /* extension payload (max 8 bytes) */
+    uint16_t ext_len;    /* 0 = no extension */
 };
 
 static uint32_t compute_timestamp(Compy_RtpTimestamp ts, uint32_t clock_rate);
@@ -59,7 +63,7 @@ int Compy_RtpTransport_send_packet(
     const Compy_RtpHeader header = {
         .version = 2,
         .padding = false,
-        .extension = false,
+        .extension = self->ext_len > 0,
         .csrc_count = 0,
         .marker = marker,
         .payload_ty = self->payload_ty,
@@ -67,9 +71,10 @@ int Compy_RtpTransport_send_packet(
         .timestamp = htobe32(compute_timestamp(ts, self->clock_rate)),
         .ssrc = self->ssrc,
         .csrc = NULL,
-        .extension_profile = htons(0),
-        .extension_payload_len = htons(0),
-        .extension_payload = NULL,
+        .extension_profile = htons(0xBEDE), /* RFC 8285 one-byte header */
+        .extension_payload_len =
+            self->ext_len > 0 ? (uint16_t)((self->ext_len + 3) / 4) : 0,
+        .extension_payload = self->ext_len > 0 ? self->ext_data : NULL,
     };
 
     const size_t rtp_header_size = Compy_RtpHeader_size(header);
@@ -119,6 +124,29 @@ bool Compy_RtpTransport_is_full(Compy_RtpTransport *self) {
 uint32_t Compy_RtpTransport_get_ssrc(const Compy_RtpTransport *self) {
     assert(self);
     return self->ssrc;
+}
+
+void Compy_RtpTransport_set_ssrc(Compy_RtpTransport *self, uint32_t ssrc) {
+    assert(self);
+    self->ssrc = ssrc;
+}
+
+void Compy_RtpTransport_set_extension(
+    Compy_RtpTransport *self, uint8_t id, const uint8_t *value, uint8_t len) {
+    assert(self);
+    assert(id >= 1 && id <= 14);
+    assert(len >= 1 && len <= 8);
+
+    /* RFC 8285 one-byte header element: [ID(4) | L(4)] [value(L+1 bytes)]
+     * Padded to 4-byte boundary with zero bytes. */
+    uint8_t pos = 0;
+    self->ext_data[pos++] = (uint8_t)((id << 4) | (len - 1));
+    for (uint8_t i = 0; i < len; i++)
+        self->ext_data[pos++] = value[i];
+    /* Pad to 4-byte boundary */
+    while (pos % 4 != 0)
+        self->ext_data[pos++] = 0;
+    self->ext_len = pos;
 }
 
 uint16_t Compy_RtpTransport_get_seq(const Compy_RtpTransport *self) {
