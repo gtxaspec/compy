@@ -15,7 +15,11 @@
 /**
  * An RTP header.
  *
- * All numerical fields must be in network byte order.
+ * Multi-byte fields (sequence_number, timestamp, extension_profile) are
+ * stored in network byte order and written to the wire via raw memcpy.
+ * Exceptions: ssrc is in host byte order (historical); extension_payload_len
+ * is in host byte order (number of 32-bit words) and converted by the
+ * serializer.
  */
 typedef struct {
     /**
@@ -103,7 +107,8 @@ typedef struct {
     uint16_t extension_profile;
 
     /**
-     * Indicates the length of the extension in 32-bit units.
+     * Length of the extension in 32-bit units (host byte order).
+     * The serializer converts to network byte order on the wire.
      */
     uint16_t extension_payload_len;
 
