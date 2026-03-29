@@ -126,30 +126,36 @@ static void srtp_encrypt_payload(
     const uint8_t session_key[16], const uint8_t session_salt[14],
     uint32_t ssrc, uint32_t index, uint8_t *payload, size_t payload_len) {
     /*
-     * IV = (session_salt padded to 16 bytes) XOR
-     *      (0x0000 || SSRC || packet_index)
+     * IV = (k_s * 2^16) XOR (SSRC * 2^64) XOR (i * 2^16)
      *
-     * session_salt is 14 bytes, left-padded with 2 zero bytes to make 16.
-     * SSRC is at bytes 4-7, packet_index at bytes 8-13 of the XOR mask.
+     * RFC 3711 Section 4.1:
+     *   k_s * 2^16:  salt (14 bytes) at bytes [0..13], zeros at [14..15]
+     *   SSRC * 2^64: SSRC (4 bytes) at bytes [4..7]
+     *   i * 2^16:    ROC (4 bytes) at bytes [8..11], SEQ (2 bytes) at [12..13]
+     *
+     * index parameter = (ROC << 16) | SEQ
      */
     uint8_t iv[AES_BLOCK_SIZE];
     memset(iv, 0, AES_BLOCK_SIZE);
-    /* Salt occupies bytes 2-15 (14 bytes) */
-    for (int i = 0; i < 14; i++) {
-        iv[i + 2] = session_salt[i];
-    }
+    /* Salt at bytes 0-13 (k_s * 2^16) */
+    memcpy(iv, session_salt, 14);
 
-    /* XOR with SSRC at bytes 4-7 */
+    /* XOR with SSRC at bytes 4-7 (SSRC * 2^64) */
     uint32_t ssrc_be = htonl(ssrc);
     for (int i = 0; i < 4; i++) {
         iv[4 + i] ^= ((uint8_t *)&ssrc_be)[i];
     }
 
-    /* XOR with packet index at bytes 8-13 (48-bit) */
-    iv[8] ^= (uint8_t)((index >> 24) & 0xFF);
-    iv[9] ^= (uint8_t)((index >> 16) & 0xFF);
-    iv[10] ^= (uint8_t)((index >> 8) & 0xFF);
-    iv[11] ^= (uint8_t)(index & 0xFF);
+    /* XOR with packet index at bytes 8-13 (i * 2^16)
+     * ROC = index >> 16 (32-bit), SEQ = index & 0xFFFF (16-bit) */
+    uint32_t roc = index >> 16;
+    uint16_t seq = (uint16_t)(index & 0xFFFF);
+    iv[8] ^= (uint8_t)((roc >> 24) & 0xFF);
+    iv[9] ^= (uint8_t)((roc >> 16) & 0xFF);
+    iv[10] ^= (uint8_t)((roc >> 8) & 0xFF);
+    iv[11] ^= (uint8_t)(roc & 0xFF);
+    iv[12] ^= (uint8_t)((seq >> 8) & 0xFF);
+    iv[13] ^= (uint8_t)(seq & 0xFF);
 
     /* Generate keystream and XOR with payload */
     size_t offset = 0;
