@@ -19,8 +19,8 @@ struct Compy_RtpTransport {
     uint32_t last_rtp_timestamp;
 
     /* Optional one-byte header extension (RFC 8285) */
-    uint8_t ext_data[8]; /* extension payload (max 8 bytes) */
-    uint16_t ext_len;    /* 0 = no extension */
+    uint8_t ext_data[12]; /* extension payload (max 12 bytes padded) */
+    uint16_t ext_len;     /* 0 = no extension */
 };
 
 static uint32_t compute_timestamp(Compy_RtpTimestamp ts, uint32_t clock_rate);
@@ -40,6 +40,8 @@ Compy_RtpTransport *Compy_RtpTransport_new(
     self->packet_count = 0;
     self->octet_count = 0;
     self->last_rtp_timestamp = 0;
+    self->ext_len = 0;
+    memset(self->ext_data, 0, sizeof(self->ext_data));
 
     return self;
 }

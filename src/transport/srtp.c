@@ -699,11 +699,21 @@ int compy_srtp_recv_unprotect(
     /* Auth passed — update replay window */
     replay_update(ctx, seq, v);
 
-    /* Decrypt payload */
+    /* Decrypt payload (skip RTP header + CSRC + extension) */
     uint8_t cc = data[0] & 0x0F;
     size_t header_len = 12 + (size_t)cc * 4;
     if (header_len > encrypted_len) {
         return -1;
+    }
+    /* If X bit is set, skip the extension header */
+    if ((data[0] & 0x10) && header_len + 4 <= encrypted_len) {
+        uint16_t ext_words;
+        memcpy(&ext_words, data + header_len + 2, 2);
+        ext_words = ntohs(ext_words);
+        header_len += 4 + (size_t)ext_words * 4;
+        if (header_len > encrypted_len) {
+            return -1;
+        }
     }
 
     srtp_encrypt_payload(
