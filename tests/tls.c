@@ -2,10 +2,16 @@
 
 #include <greatest.h>
 
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+#include <mbedtls/ctr_drbg.h>
+#include <mbedtls/entropy.h>
+#include <mbedtls/net_sockets.h>
+#include <mbedtls/ssl.h>
 
 /* Embedded self-signed test certificate and key */
 static const char test_cert_pem[] =
@@ -72,10 +78,120 @@ static void write_test_files(void) {
     fclose(f);
 }
 
-/* Note: Full TLS write/read roundtrip requires a TLS client implementation.
- * Since compy only provides server-side TLS API, we test context lifecycle
- * and writer construction. Integration testing with ffplay/ffprobe
- * validates the full TLS path. */
+/* --- mbedTLS client for testing --- */
+
+typedef struct {
+    mbedtls_ssl_context ssl;
+    mbedtls_ssl_config conf;
+    mbedtls_entropy_context entropy;
+    mbedtls_ctr_drbg_context ctr_drbg;
+    mbedtls_net_context net;
+} TestTlsClient;
+
+static int test_client_init(TestTlsClient *c, int fd) {
+    mbedtls_ssl_init(&c->ssl);
+    mbedtls_ssl_config_init(&c->conf);
+    mbedtls_entropy_init(&c->entropy);
+    mbedtls_ctr_drbg_init(&c->ctr_drbg);
+    mbedtls_net_init(&c->net);
+    c->net.fd = fd;
+
+    if (mbedtls_ctr_drbg_seed(
+            &c->ctr_drbg, mbedtls_entropy_func, &c->entropy,
+            (const unsigned char *)"test", 4) != 0)
+        return -1;
+
+    if (mbedtls_ssl_config_defaults(
+            &c->conf, MBEDTLS_SSL_IS_CLIENT, MBEDTLS_SSL_TRANSPORT_STREAM,
+            MBEDTLS_SSL_PRESET_DEFAULT) != 0)
+        return -1;
+
+    mbedtls_ssl_conf_authmode(&c->conf, MBEDTLS_SSL_VERIFY_NONE);
+    mbedtls_ssl_conf_rng(&c->conf, mbedtls_ctr_drbg_random, &c->ctr_drbg);
+
+    if (mbedtls_ssl_setup(&c->ssl, &c->conf) != 0)
+        return -1;
+
+    mbedtls_ssl_set_bio(
+        &c->ssl, &c->net, mbedtls_net_send, mbedtls_net_recv, NULL);
+
+    int ret;
+    while ((ret = mbedtls_ssl_handshake(&c->ssl)) != 0) {
+        if (ret != MBEDTLS_ERR_SSL_WANT_READ &&
+            ret != MBEDTLS_ERR_SSL_WANT_WRITE)
+            return -1;
+    }
+    return 0;
+}
+
+static void test_client_free(TestTlsClient *c) {
+    mbedtls_ssl_free(&c->ssl);
+    mbedtls_ssl_config_free(&c->conf);
+    mbedtls_entropy_free(&c->entropy);
+    mbedtls_ctr_drbg_free(&c->ctr_drbg);
+}
+
+/* Server accept runs in a thread since handshake blocks */
+typedef struct {
+    Compy_TlsContext *ctx;
+    int fd;
+    Compy_TlsConn *conn; /* output */
+} AcceptArgs;
+
+static void *accept_thread(void *arg) {
+    AcceptArgs *a = arg;
+    a->conn = Compy_TlsConn_accept(a->ctx, a->fd);
+    return NULL;
+}
+
+/* Helper: set up a TLS connection (server + client) over socketpair */
+typedef struct {
+    Compy_TlsContext *ctx;
+    Compy_TlsConn *server;
+    TestTlsClient client;
+    int server_fd;
+    int client_fd;
+} TlsTestPair;
+
+static int tls_pair_init(TlsTestPair *p) {
+    write_test_files();
+    p->ctx = Compy_TlsContext_new(
+        (Compy_TlsConfig){.cert_path = cert_path, .key_path = key_path});
+    if (!p->ctx)
+        return -1;
+
+    int fds[2];
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds) != 0)
+        return -1;
+    p->server_fd = fds[0];
+    p->client_fd = fds[1];
+
+    /* Server accepts in a thread, client connects in main thread */
+    AcceptArgs args = {.ctx = p->ctx, .fd = p->server_fd};
+    pthread_t tid;
+    pthread_create(&tid, NULL, accept_thread, &args);
+
+    if (test_client_init(&p->client, p->client_fd) != 0) {
+        pthread_join(tid, NULL);
+        return -1;
+    }
+
+    pthread_join(tid, NULL);
+    p->server = args.conn;
+    return p->server ? 0 : -1;
+}
+
+static void tls_pair_free(TlsTestPair *p) {
+    compy_tls_shutdown(p->server);
+    mbedtls_ssl_close_notify(&p->client.ssl);
+    Compy_TlsConn_free(p->server);
+    test_client_free(&p->client);
+    close(p->server_fd);
+    close(p->client_fd);
+    Compy_TlsContext_free(p->ctx);
+}
+
+/* --- Tests --- */
 
 TEST tls_context_load_valid(void) {
     write_test_files();
@@ -96,25 +212,143 @@ TEST tls_context_load_invalid(void) {
     PASS();
 }
 
-TEST tls_writer_roundtrip(void) {
-    write_test_files();
+TEST tls_handshake(void) {
+    TlsTestPair p;
+    ASSERT_EQ(0, tls_pair_init(&p));
+    tls_pair_free(&p);
+    PASS();
+}
 
-    Compy_TlsContext *ctx = Compy_TlsContext_new(
-        (Compy_TlsConfig){.cert_path = cert_path, .key_path = key_path});
+TEST tls_write_read_roundtrip(void) {
+    TlsTestPair p;
+    ASSERT_EQ(0, tls_pair_init(&p));
 
-    ASSERT(ctx != NULL);
+    /* Server writes via compy writer, client reads */
+    Compy_Writer w = compy_tls_writer(p.server);
+    ssize_t written = VCALL(w, write, CharSlice99_from_str("Hello from compy"));
+    ASSERT_EQ(16, written);
 
-    int fds[2];
-    ASSERT(socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+    char buf[64] = {0};
+    int n = mbedtls_ssl_read(&p.client.ssl, (unsigned char *)buf, sizeof buf);
+    ASSERT_EQ(16, n);
+    ASSERT_STR_EQ("Hello from compy", buf);
 
-    Compy_TlsContext_free(ctx);
-    close(fds[0]);
-    close(fds[1]);
+    tls_pair_free(&p);
+    PASS();
+}
+
+TEST tls_writef(void) {
+    TlsTestPair p;
+    ASSERT_EQ(0, tls_pair_init(&p));
+
+    Compy_Writer w = compy_tls_writer(p.server);
+    int written = VCALL(w, writef, "RTSP/1.0 %d %s\r\n", 200, "OK");
+    ASSERT(written > 0);
+
+    char buf[64] = {0};
+    int n = mbedtls_ssl_read(&p.client.ssl, (unsigned char *)buf, sizeof buf);
+    ASSERT(n > 0);
+    ASSERT_STR_EQ("RTSP/1.0 200 OK\r\n", buf);
+
+    tls_pair_free(&p);
+    PASS();
+}
+
+TEST tls_client_to_server_read(void) {
+    TlsTestPair p;
+    ASSERT_EQ(0, tls_pair_init(&p));
+
+    /* Client writes, server reads via compy_tls_read */
+    const char *msg = "GET_PARAMETER rtsp://camera RTSP/1.0\r\n\r\n";
+    int ret = mbedtls_ssl_write(
+        &p.client.ssl, (const unsigned char *)msg, strlen(msg));
+    ASSERT_EQ((int)strlen(msg), ret);
+
+    char buf[128] = {0};
+    ssize_t n = compy_tls_read(p.server, buf, sizeof buf);
+    ASSERT_EQ((ssize_t)strlen(msg), n);
+    ASSERT_MEM_EQ(msg, buf, strlen(msg));
+
+    tls_pair_free(&p);
+    PASS();
+}
+
+TEST tls_writer_locked_multi_write(void) {
+    /* This tests the pattern RSD uses: lock, write header, write payload,
+     * unlock. The client should receive both writes as a single TLS stream. */
+    TlsTestPair p;
+    ASSERT_EQ(0, tls_pair_init(&p));
+
+    Compy_Writer w = compy_tls_writer(p.server);
+
+    VCALL(w, lock);
+    char hdr[] = {'$', 0x00, 0x00, 0x05};
+    VCALL(w, write, CharSlice99_new(hdr, 4));
+    char payload[] = "HELLO";
+    VCALL(w, write, CharSlice99_new(payload, 5));
+    VCALL(w, unlock);
+
+    char buf[64] = {0};
+    int total = 0;
+    while (total < 9) {
+        int n = mbedtls_ssl_read(
+            &p.client.ssl, (unsigned char *)buf + total,
+            (size_t)(sizeof buf - total));
+        ASSERT(n > 0);
+        total += n;
+    }
+    ASSERT_EQ(9, total);
+    ASSERT_EQ('$', buf[0]);
+    ASSERT_EQ(0, buf[1]);
+    ASSERT_MEM_EQ("HELLO", buf + 4, 5);
+
+    tls_pair_free(&p);
+    PASS();
+}
+
+TEST tls_multiple_writes(void) {
+    /* Send 100 small messages — exercises the TLS record layer */
+    TlsTestPair p;
+    ASSERT_EQ(0, tls_pair_init(&p));
+
+    Compy_Writer w = compy_tls_writer(p.server);
+    const char *msg = "FRAME\n";
+    size_t msg_len = strlen(msg);
+
+    for (int i = 0; i < 100; i++) {
+        VCALL(w, lock);
+        ssize_t ret = VCALL(w, write, CharSlice99_from_str((char *)msg));
+        VCALL(w, unlock);
+        ASSERT_EQ((ssize_t)msg_len, ret);
+    }
+
+    /* Read all on client side */
+    char buf[1024] = {0};
+    size_t total = 0;
+    while (total < 100 * msg_len) {
+        int n = mbedtls_ssl_read(
+            &p.client.ssl, (unsigned char *)buf + total, sizeof buf - total);
+        ASSERT(n > 0);
+        total += (size_t)n;
+    }
+    ASSERT_EQ(100 * msg_len, total);
+
+    /* Verify every 6th byte is 'F' (start of "FRAME\n") */
+    for (int i = 0; i < 100; i++) {
+        ASSERT_EQ('F', buf[i * msg_len]);
+    }
+
+    tls_pair_free(&p);
     PASS();
 }
 
 SUITE(tls) {
     RUN_TEST(tls_context_load_valid);
     RUN_TEST(tls_context_load_invalid);
-    RUN_TEST(tls_writer_roundtrip);
+    RUN_TEST(tls_handshake);
+    RUN_TEST(tls_write_read_roundtrip);
+    RUN_TEST(tls_writef);
+    RUN_TEST(tls_client_to_server_read);
+    RUN_TEST(tls_writer_locked_multi_write);
+    RUN_TEST(tls_multiple_writes);
 }
