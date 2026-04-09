@@ -3,7 +3,7 @@
  * @brief Backend-agnostic cryptographic operations for TLS and SRTP.
  *
  * This header defines function pointer structs that each TLS backend
- * (wolfSSL, mbedTLS, OpenSSL, BearSSL) implements. The compiled backend
+ * (wolfSSL, mbedTLS, OpenSSL) implements. The compiled backend
  * populates the extern const singletons. Only one backend is linked at
  * a time, selected via CMake options.
  *
@@ -66,10 +66,18 @@ typedef struct {
 typedef struct {
     /**
      * AES-128 ECB encrypt a single 16-byte block.
-     * Used for AES-CM counter mode keystream generation.
+     * Used for key derivation (srtp_kdf).
      */
     void (*aes128_ecb)(
         const uint8_t key[16], const uint8_t in[16], uint8_t out[16]);
+
+    /**
+     * AES-128 CTR mode encrypt/decrypt in-place.
+     * The 16-byte IV has a counter at bytes [14..15] starting from 0.
+     * Used for SRTP payload encryption (called per-packet).
+     */
+    void (*aes128_ctr)(
+        const uint8_t key[16], const uint8_t iv[16], uint8_t *data, size_t len);
 
     /**
      * HMAC-SHA1. Writes 20-byte digest to @p out.

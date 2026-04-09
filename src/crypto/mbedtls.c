@@ -3,6 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <sys/socket.h>
+#include <sys/time.h>
+
 #include <mbedtls/version.h>
 
 #include <mbedtls/net_sockets.h>
@@ -140,6 +143,9 @@ static void mbed_ctx_free(Compy_CryptoTlsCtx *ctx) {
 static Compy_CryptoTlsConn *mbed_accept(Compy_CryptoTlsCtx *ctx, int fd) {
     MbedTlsCtx *c = ctx;
 
+    struct timeval tv = {.tv_sec = 10, .tv_usec = 0};
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+
     MbedTlsConn *conn = calloc(1, sizeof *conn);
     if (!conn)
         return NULL;
@@ -165,6 +171,9 @@ static Compy_CryptoTlsConn *mbed_accept(Compy_CryptoTlsCtx *ctx, int fd) {
             return NULL;
         }
     }
+
+    tv = (struct timeval){0};
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
 
     return conn;
 }
@@ -227,6 +236,40 @@ mbed_aes128_ecb(const uint8_t key[16], const uint8_t in[16], uint8_t out[16]) {
 
     size_t olen;
     psa_cipher_encrypt(kid, PSA_ALG_ECB_NO_PADDING, in, 16, out, 16, &olen);
+    psa_destroy_key(kid);
+#endif
+}
+
+static void mbed_aes128_ctr(
+    const uint8_t key[16], const uint8_t iv[16], uint8_t *data, size_t len) {
+#ifdef COMPY_MBEDTLS_LEGACY
+    mbedtls_aes_context aes;
+    mbedtls_aes_init(&aes);
+    mbedtls_aes_setkey_enc(&aes, key, 128);
+    size_t nc_off = 0;
+    uint8_t nonce_counter[16];
+    uint8_t stream_block[16] = {0};
+    memcpy(nonce_counter, iv, 16);
+    mbedtls_aes_crypt_ctr(
+        &aes, len, &nc_off, nonce_counter, stream_block, data, data);
+    mbedtls_aes_free(&aes);
+#else
+    psa_key_attributes_t attr = PSA_KEY_ATTRIBUTES_INIT;
+    psa_set_key_type(&attr, PSA_KEY_TYPE_AES);
+    psa_set_key_bits(&attr, 128);
+    psa_set_key_usage_flags(&attr, PSA_KEY_USAGE_ENCRYPT);
+    psa_set_key_algorithm(&attr, PSA_ALG_CTR);
+
+    psa_key_id_t kid;
+    psa_import_key(&attr, key, 16, &kid);
+
+    psa_cipher_operation_t op = PSA_CIPHER_OPERATION_INIT;
+    psa_cipher_encrypt_setup(&op, kid, PSA_ALG_CTR);
+    psa_cipher_set_iv(&op, iv, 16);
+
+    size_t olen;
+    psa_cipher_update(&op, data, len, data, len, &olen);
+    psa_cipher_finish(&op, data + olen, len - olen, &olen);
     psa_destroy_key(kid);
 #endif
 }
@@ -296,6 +339,7 @@ const Compy_CryptoTlsOps compy_crypto_tls_ops = {
 
 const Compy_CryptoSrtpOps compy_crypto_srtp_ops = {
     .aes128_ecb = mbed_aes128_ecb,
+    .aes128_ctr = mbed_aes128_ctr,
     .hmac_sha1 = mbed_hmac_sha1,
     .random_bytes = mbed_random_bytes,
 };

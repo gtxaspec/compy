@@ -157,31 +157,8 @@ static void srtp_encrypt_payload(
     iv[12] ^= (uint8_t)((seq >> 8) & 0xFF);
     iv[13] ^= (uint8_t)(seq & 0xFF);
 
-    /* Generate keystream and XOR with payload */
-    size_t offset = 0;
-    uint16_t counter = 0;
-
-    while (offset < payload_len) {
-        uint8_t block_iv[AES_BLOCK_SIZE];
-        memcpy(block_iv, iv, AES_BLOCK_SIZE);
-        block_iv[14] = (uint8_t)(counter >> 8);
-        block_iv[15] = (uint8_t)(counter & 0xFF);
-
-        uint8_t keystream[AES_BLOCK_SIZE];
-        compy_crypto_srtp_ops.aes128_ecb(session_key, block_iv, keystream);
-
-        size_t to_xor = payload_len - offset;
-        if (to_xor > AES_BLOCK_SIZE) {
-            to_xor = AES_BLOCK_SIZE;
-        }
-
-        for (size_t i = 0; i < to_xor; i++) {
-            payload[offset + i] ^= keystream[i];
-        }
-
-        offset += to_xor;
-        counter++;
-    }
+    /* AES-128 counter mode: single call encrypts/decrypts in-place */
+    compy_crypto_srtp_ops.aes128_ctr(session_key, iv, payload, payload_len);
 }
 
 /* --- Transport interface --- */

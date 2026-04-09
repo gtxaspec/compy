@@ -60,7 +60,7 @@ target_link_options(tests PRIVATE -fsanitize=address)
 target_link_libraries(tests compy)
 target_include_directories(tests PRIVATE ${greatest_SOURCE_DIR})
 
-if(COMPY_TLS_OPENSSL OR COMPY_TLS_WOLFSSL OR COMPY_TLS_MBEDTLS OR COMPY_TLS_BEARSSL)
+if(COMPY_TLS_OPENSSL OR COMPY_TLS_WOLFSSL OR COMPY_TLS_MBEDTLS)
   target_sources(tests PRIVATE srtp.c tls.c)
 endif()
 

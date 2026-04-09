@@ -36,7 +36,6 @@ jobs:
           - { name: OpenSSL, flag: COMPY_TLS_OPENSSL, pkg: libssl-dev }
           - { name: wolfSSL, flag: COMPY_TLS_WOLFSSL, pkg: libwolfssl-dev }
           - { name: mbedTLS, flag: COMPY_TLS_MBEDTLS, pkg: libmbedtls-dev }
-          - { name: BearSSL, flag: COMPY_TLS_BEARSSL, pkg: libbearssl-dev }
     runs-on: ubuntu-latest
     name: test-${{ matrix.backend.name }}
     steps:

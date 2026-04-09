@@ -83,10 +83,7 @@ TEST tls_context_load_valid(void) {
     Compy_TlsContext *ctx = Compy_TlsContext_new(
         (Compy_TlsConfig){.cert_path = cert_path, .key_path = key_path});
 
-    /* BearSSL TLS context is stubbed — returns NULL. Skip gracefully. */
-    if (ctx == NULL) {
-        SKIPm("TLS context not supported by this backend");
-    }
+    ASSERT(ctx != NULL);
 
     Compy_TlsContext_free(ctx);
     PASS();
@@ -105,9 +102,7 @@ TEST tls_writer_roundtrip(void) {
     Compy_TlsContext *ctx = Compy_TlsContext_new(
         (Compy_TlsConfig){.cert_path = cert_path, .key_path = key_path});
 
-    if (ctx == NULL) {
-        SKIPm("TLS context not supported by this backend");
-    }
+    ASSERT(ctx != NULL);
 
     int fds[2];
     ASSERT(socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);

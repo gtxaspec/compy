@@ -4,6 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <sys/socket.h>
+#include <sys/time.h>
+
 #include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
@@ -64,6 +67,10 @@ static void ossl_ctx_free(Compy_CryptoTlsCtx *ctx) {
 static Compy_CryptoTlsConn *ossl_accept(Compy_CryptoTlsCtx *ctx, int fd) {
     OsslTlsCtx *c = ctx;
 
+    /* Set receive timeout so a stalled client can't hang the accept thread */
+    struct timeval tv = {.tv_sec = 10, .tv_usec = 0};
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+
     SSL *ssl = SSL_new(c->ssl_ctx);
     if (!ssl) {
         return NULL;
@@ -78,6 +85,10 @@ static Compy_CryptoTlsConn *ossl_accept(Compy_CryptoTlsCtx *ctx, int fd) {
         SSL_free(ssl);
         return NULL;
     }
+
+    /* Clear timeout for normal I/O */
+    tv = (struct timeval){0};
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
 
     OsslTlsConn *conn = malloc(sizeof *conn);
     if (!conn) {
@@ -146,6 +157,18 @@ ossl_aes128_ecb(const uint8_t key[16], const uint8_t in[16], uint8_t out[16]) {
     EVP_CIPHER_CTX_free(ctx);
 }
 
+static void ossl_aes128_ctr(
+    const uint8_t key[16], const uint8_t iv[16], uint8_t *data, size_t len) {
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (!ctx)
+        return;
+    EVP_EncryptInit_ex(ctx, EVP_aes_128_ctr(), NULL, key, iv);
+    int outl = 0;
+    EVP_EncryptUpdate(
+        ctx, data, &outl, data, (int)(len > INT_MAX ? INT_MAX : len));
+    EVP_CIPHER_CTX_free(ctx);
+}
+
 static void ossl_hmac_sha1(
     const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len,
     uint8_t out[20]) {
@@ -174,6 +197,7 @@ const Compy_CryptoTlsOps compy_crypto_tls_ops = {
 
 const Compy_CryptoSrtpOps compy_crypto_srtp_ops = {
     .aes128_ecb = ossl_aes128_ecb,
+    .aes128_ctr = ossl_aes128_ctr,
     .hmac_sha1 = ossl_hmac_sha1,
     .random_bytes = ossl_random_bytes,
 };

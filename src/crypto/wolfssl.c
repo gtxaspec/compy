@@ -4,6 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <sys/socket.h>
+#include <sys/time.h>
+
 #include <wolfssl/options.h>
 #include <wolfssl/ssl.h>
 #include <wolfssl/wolfcrypt/aes.h>
@@ -61,6 +64,10 @@ static void wolf_ctx_free(Compy_CryptoTlsCtx *ctx) {
 
 static Compy_CryptoTlsConn *wolf_accept(Compy_CryptoTlsCtx *ctx, int fd) {
     WolfTlsCtx *c = ctx;
+
+    struct timeval tv = {.tv_sec = 10, .tv_usec = 0};
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+
     WOLFSSL *ssl = wolfSSL_new(c->ctx);
     if (!ssl)
         return NULL;
@@ -70,6 +77,9 @@ static Compy_CryptoTlsConn *wolf_accept(Compy_CryptoTlsCtx *ctx, int fd) {
         wolfSSL_free(ssl);
         return NULL;
     }
+
+    tv = (struct timeval){0};
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
 
     WolfTlsConn *conn = malloc(sizeof *conn);
     if (!conn) {
@@ -131,6 +141,15 @@ wolf_aes128_ecb(const uint8_t key[16], const uint8_t in[16], uint8_t out[16]) {
     wc_AesFree(&aes);
 }
 
+static void wolf_aes128_ctr(
+    const uint8_t key[16], const uint8_t iv[16], uint8_t *data, size_t len) {
+    Aes aes;
+    wc_AesInit(&aes, NULL, INVALID_DEVID);
+    wc_AesSetKey(&aes, key, 16, iv, AES_ENCRYPTION);
+    wc_AesCtrEncrypt(&aes, data, data, (word32)len);
+    wc_AesFree(&aes);
+}
+
 static void wolf_hmac_sha1(
     const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len,
     uint8_t out[20]) {
@@ -166,6 +185,7 @@ const Compy_CryptoTlsOps compy_crypto_tls_ops = {
 
 const Compy_CryptoSrtpOps compy_crypto_srtp_ops = {
     .aes128_ecb = wolf_aes128_ecb,
+    .aes128_ctr = wolf_aes128_ctr,
     .hmac_sha1 = wolf_hmac_sha1,
     .random_bytes = wolf_random_bytes,
 };
