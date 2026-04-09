@@ -1,0 +1,4 @@
+# wolfSSL internal allocations that aren't freed during TLS shutdown.
+# These are inside wolfSSL's ECC and TLS handshake code, not compy's.
+leak:wc_ecc_new_point
+leak:wolfSSL_accept

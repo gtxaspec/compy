@@ -45,6 +45,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y cmake libmbedtls-dev ${{ matrix.backend.pkg }}
 
       - name: Build and test (${{ matrix.backend.name }})
+        env:
+          LSAN_OPTIONS: suppressions=${{ github.workspace }}/tests/lsan_suppressions.txt
         run: |
           cd tests
           cmake -B build -D${{ matrix.backend.flag }}=ON
