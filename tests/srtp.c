@@ -843,6 +843,134 @@ TEST srtcp_out_of_order_accepted(void) {
     PASS();
 }
 
+TEST srtp_sequential_packets_decrypt(void) {
+    /* RSD sends continuous video — verify 10 sequential packets decrypt */
+    int fds[2];
+    ASSERT(socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds) == 0);
+
+    Compy_SrtpKeyMaterial key;
+    ASSERT_EQ(0, compy_srtp_generate_key(&key));
+
+    Compy_Transport udp = compy_transport_udp(fds[0]);
+    Compy_Transport srtp = compy_transport_srtp(
+        udp, Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &key);
+    Compy_SrtpRecvCtx *recv_ctx =
+        compy_srtp_recv_new(Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &key);
+
+    for (uint16_t seq = 0; seq < 10; seq++) {
+        uint8_t rtp_packet[52]; /* 12 header + 40 payload */
+        memset(rtp_packet, 0, sizeof rtp_packet);
+        rtp_packet[0] = 0x80;
+        rtp_packet[1] = 96;
+        rtp_packet[2] = (uint8_t)(seq >> 8);
+        rtp_packet[3] = (uint8_t)(seq & 0xFF);
+        rtp_packet[8] = 0xDE;
+        rtp_packet[9] = 0xAD;
+        rtp_packet[10] = 0xBE;
+        rtp_packet[11] = 0xEF;
+        memset(rtp_packet + 12, (uint8_t)(0x10 + seq), 40);
+
+        struct iovec bufs[] = {
+            {.iov_base = rtp_packet, .iov_len = sizeof rtp_packet}};
+        Compy_IoVecSlice slices = Slice99_typed_from_array(bufs);
+        ASSERT_EQ(0, VCALL(srtp, transmit, slices));
+
+        uint8_t encrypted[256];
+        ssize_t n = recv(fds[1], encrypted, sizeof encrypted, MSG_DONTWAIT);
+        ASSERT(n > 0);
+
+        size_t dec_len = (size_t)n;
+        ASSERT_EQ(0, compy_srtp_recv_unprotect(recv_ctx, encrypted, &dec_len));
+        ASSERT_EQ(sizeof rtp_packet, dec_len);
+        ASSERT_MEM_EQ(rtp_packet, encrypted, sizeof rtp_packet);
+    }
+
+    compy_srtp_recv_free(recv_ctx);
+    VCALL_SUPER(srtp, Compy_Droppable, drop);
+    close(fds[1]);
+    PASS();
+}
+
+TEST srtp_decrypt_truncated_rejected(void) {
+    Compy_SrtpKeyMaterial key;
+    ASSERT_EQ(0, compy_srtp_generate_key(&key));
+    Compy_SrtpRecvCtx *ctx =
+        compy_srtp_recv_new(Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &key);
+
+    /* Too short for RTP header (12) + auth tag (10) */
+    uint8_t short_pkt[20] = {0x80};
+    size_t len = sizeof short_pkt;
+    ASSERT_EQ(-1, compy_srtp_recv_unprotect(ctx, short_pkt, &len));
+
+    /* Exactly at minimum (12 + 10 = 22) but with garbage — auth will fail */
+    uint8_t min_pkt[22];
+    memset(min_pkt, 0, sizeof min_pkt);
+    min_pkt[0] = 0x80;
+    len = sizeof min_pkt;
+    ASSERT_EQ(-1, compy_srtp_recv_unprotect(ctx, min_pkt, &len));
+
+    compy_srtp_recv_free(ctx);
+    PASS();
+}
+
+TEST srtcp_too_old_rejected(void) {
+    int fds[2];
+    ASSERT(socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds) == 0);
+
+    Compy_SrtpKeyMaterial key;
+    ASSERT_EQ(0, compy_srtp_generate_key(&key));
+
+    Compy_Transport udp = compy_transport_udp(fds[0]);
+    Compy_Transport srtcp = compy_transport_srtcp(
+        udp, Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &key);
+    Compy_SrtpRecvCtx *recv_ctx =
+        compy_srtp_recv_new(Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &key);
+
+    uint8_t rtcp_packet[28];
+    memset(rtcp_packet, 0, sizeof rtcp_packet);
+    rtcp_packet[0] = 0x80;
+    rtcp_packet[1] = 200;
+    rtcp_packet[3] = 6;
+    rtcp_packet[4] = 0xDE;
+    rtcp_packet[5] = 0xAD;
+    rtcp_packet[6] = 0xBE;
+    rtcp_packet[7] = 0xEF;
+
+    /* Send 100 SRTCP packets to advance the window far ahead */
+    uint8_t first_pkt[256];
+    ssize_t first_len = 0;
+    for (int i = 0; i < 100; i++) {
+        memset(rtcp_packet + 8, (uint8_t)(0x40 + (i & 0x3F)), 20);
+        struct iovec bufs[] = {
+            {.iov_base = rtcp_packet, .iov_len = sizeof rtcp_packet}};
+        Compy_IoVecSlice slices = Slice99_typed_from_array(bufs);
+        ASSERT_EQ(0, VCALL(srtcp, transmit, slices));
+
+        uint8_t buf[256];
+        ssize_t n = recv(fds[1], buf, sizeof buf, MSG_DONTWAIT);
+        ASSERT(n > 0);
+
+        if (i == 0) {
+            memcpy(first_pkt, buf, (size_t)n);
+            first_len = n;
+        }
+
+        /* Decrypt in order to advance the window */
+        size_t dec_len = (size_t)n;
+        ASSERT_EQ(0, compy_srtcp_recv_unprotect(recv_ctx, buf, &dec_len));
+    }
+
+    /* Now try to decrypt packet index 0 again — should be too old (>64 behind)
+     */
+    size_t replay_len = (size_t)first_len;
+    ASSERT_EQ(-1, compy_srtcp_recv_unprotect(recv_ctx, first_pkt, &replay_len));
+
+    compy_srtp_recv_free(recv_ctx);
+    VCALL_SUPER(srtcp, Compy_Droppable, drop);
+    close(fds[1]);
+    PASS();
+}
+
 SUITE(srtp) {
     RUN_TEST(srtp_generate_key_nonzero);
     RUN_TEST(srtp_crypto_attr_format);
@@ -863,4 +991,7 @@ SUITE(srtp) {
     RUN_TEST(srtp_with_csrc_and_extension);
     RUN_TEST(srtcp_replay_rejected);
     RUN_TEST(srtcp_out_of_order_accepted);
+    RUN_TEST(srtp_sequential_packets_decrypt);
+    RUN_TEST(srtp_decrypt_truncated_rejected);
+    RUN_TEST(srtcp_too_old_rejected);
 }

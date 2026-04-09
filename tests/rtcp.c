@@ -4,6 +4,9 @@
 
 #include <greatest.h>
 
+#include <string.h>
+
+#include <arpa/inet.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -174,9 +177,118 @@ TEST rtp_stats_tracking(void) {
     PASS();
 }
 
+TEST rtp_ssrc_nonzero_entropy(void) {
+    /* Verify SSRC uses OS entropy (not zero from unseeded rand) */
+    int fds[2];
+    ASSERT(socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds) == 0);
+
+    Compy_Transport t = compy_transport_udp(fds[0]);
+    Compy_RtpTransport *rtp = Compy_RtpTransport_new(t, 96, 90000);
+
+    uint32_t ssrc = Compy_RtpTransport_get_ssrc(rtp);
+    ASSERT(ssrc != 0);
+
+    /* Create a second — SSRCs should differ */
+    int fds2[2];
+    ASSERT(socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds2) == 0);
+    Compy_Transport t2 = compy_transport_udp(fds2[0]);
+    Compy_RtpTransport *rtp2 = Compy_RtpTransport_new(t2, 96, 90000);
+    uint32_t ssrc2 = Compy_RtpTransport_get_ssrc(rtp2);
+    ASSERT(ssrc != ssrc2);
+
+    VCALL(DYN(Compy_RtpTransport, Compy_Droppable, rtp2), drop);
+    close(fds2[1]);
+    VCALL(DYN(Compy_RtpTransport, Compy_Droppable, rtp), drop);
+    close(fds[1]);
+    PASS();
+}
+
+TEST rtp_seq_increments(void) {
+    int fds[2];
+    ASSERT(socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds) == 0);
+
+    Compy_Transport t = compy_transport_udp(fds[0]);
+    Compy_RtpTransport *rtp = Compy_RtpTransport_new(t, 96, 90000);
+
+    ASSERT_EQ(0, Compy_RtpTransport_get_seq(rtp));
+
+    uint8_t payload[4] = {0};
+    for (int i = 0; i < 5; i++) {
+        int ret __attribute__((unused)) = Compy_RtpTransport_send_packet(
+            rtp, Compy_RtpTimestamp_Raw((uint32_t)(i * 100)), false,
+            U8Slice99_empty(), U8Slice99_new(payload, sizeof payload));
+    }
+
+    ASSERT_EQ(5, Compy_RtpTransport_get_seq(rtp));
+    ASSERT_EQ(5, Compy_RtpTransport_get_packet_count(rtp));
+    ASSERT_EQ(20, Compy_RtpTransport_get_octet_count(rtp));
+
+    VCALL(DYN(Compy_RtpTransport, Compy_Droppable, rtp), drop);
+    close(fds[1]);
+    PASS();
+}
+
+TEST rtcp_sr_reflects_rtp_stats(void) {
+    /* RSD sends RTP packets then periodic SR — verify SR has correct stats */
+    int rtp_fds[2], rtcp_fds[2];
+    ASSERT(socketpair(AF_UNIX, SOCK_SEQPACKET, 0, rtp_fds) == 0);
+    ASSERT(socketpair(AF_UNIX, SOCK_SEQPACKET, 0, rtcp_fds) == 0);
+
+    Compy_Transport rtp_t = compy_transport_udp(rtp_fds[0]);
+    Compy_RtpTransport *rtp = Compy_RtpTransport_new(rtp_t, 96, 90000);
+
+    /* Send 3 RTP packets with 100-byte payloads */
+    uint8_t payload[100];
+    memset(payload, 0xAA, sizeof payload);
+    for (int i = 0; i < 3; i++) {
+        int ret __attribute__((unused)) = Compy_RtpTransport_send_packet(
+            rtp, Compy_RtpTimestamp_Raw((uint32_t)(i * 3000)), false,
+            U8Slice99_empty(), U8Slice99_new(payload, sizeof payload));
+        /* Drain the RTP socket */
+        uint8_t drain[256];
+        recv(rtp_fds[1], drain, sizeof drain, MSG_DONTWAIT);
+    }
+
+    Compy_Transport rtcp_t = compy_transport_udp(rtcp_fds[0]);
+    Compy_Rtcp *rtcp = Compy_Rtcp_new(rtp, rtcp_t, "raptor@camera");
+
+    ASSERT_EQ(0, Compy_Rtcp_send_sr(rtcp));
+
+    uint8_t sr_buf[COMPY_RTCP_MAX_PACKET_SIZE];
+    ssize_t n = read(rtcp_fds[1], sr_buf, sizeof sr_buf);
+    ASSERT(n > 28);
+
+    /* Verify SSRC in SR matches RTP SSRC */
+    uint32_t sr_ssrc;
+    memcpy(&sr_ssrc, sr_buf + 4, 4);
+    sr_ssrc = ntohl(sr_ssrc);
+    ASSERT_EQ(Compy_RtpTransport_get_ssrc(rtp), sr_ssrc);
+
+    /* Verify packet count (bytes 20-23 of SR) */
+    uint32_t pkt_count;
+    memcpy(&pkt_count, sr_buf + 20, 4);
+    pkt_count = ntohl(pkt_count);
+    ASSERT_EQ(3, pkt_count);
+
+    /* Verify octet count (bytes 24-27 of SR) */
+    uint32_t octet_count;
+    memcpy(&octet_count, sr_buf + 24, 4);
+    octet_count = ntohl(octet_count);
+    ASSERT_EQ(300, octet_count);
+
+    VCALL(DYN(Compy_Rtcp, Compy_Droppable, rtcp), drop);
+    VCALL(DYN(Compy_RtpTransport, Compy_Droppable, rtp), drop);
+    close(rtp_fds[1]);
+    close(rtcp_fds[1]);
+    PASS();
+}
+
 SUITE(rtcp) {
     RUN_TEST(rtcp_send_sr);
     RUN_TEST(rtcp_send_bye);
     RUN_TEST(rtcp_handle_rr);
     RUN_TEST(rtp_stats_tracking);
+    RUN_TEST(rtp_ssrc_nonzero_entropy);
+    RUN_TEST(rtp_seq_increments);
+    RUN_TEST(rtcp_sr_reflects_rtp_stats);
 }

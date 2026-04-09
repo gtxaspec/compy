@@ -107,10 +107,56 @@ TEST sockaddr_get_unknown(void) {
     PASS();
 }
 
+TEST check_tcp_multi_channel(void) {
+    /* RSD uses channel 0/1 for video, 2/3 for audio on same connection */
+    int fds[2];
+    ASSERT(socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+
+    Compy_Writer w = compy_fd_writer(&fds[0]);
+
+    Compy_Transport video = compy_transport_tcp(w, 0, 0);
+    Compy_Transport audio = compy_transport_tcp(w, 2, 0);
+
+    /* Send video frame */
+    uint8_t vdata[] = {0xAA, 0xBB, 0xCC};
+    struct iovec vbufs[] = {{.iov_base = vdata, .iov_len = sizeof vdata}};
+    Compy_IoVecSlice vslice = Slice99_typed_from_array(vbufs);
+    ASSERT_EQ(0, VCALL(video, transmit, vslice));
+
+    /* Send audio frame */
+    uint8_t adata[] = {0x11, 0x22};
+    struct iovec abufs[] = {{.iov_base = adata, .iov_len = sizeof adata}};
+    Compy_IoVecSlice aslice = Slice99_typed_from_array(abufs);
+    ASSERT_EQ(0, VCALL(audio, transmit, aslice));
+
+    /* Read and verify both frames */
+    uint8_t buf[32];
+    ssize_t n = read(fds[1], buf, sizeof buf);
+    ASSERT(n >= 11); /* 4+3 + 4+2 = 13 bytes total */
+
+    /* Video frame: $ 0x00 0x0003 0xAA 0xBB 0xCC */
+    ASSERT_EQ('$', buf[0]);
+    ASSERT_EQ(0, buf[1]); /* channel 0 */
+    ASSERT_MEM_EQ(vdata, buf + 4, 3);
+
+    /* Audio frame: $ 0x02 0x0002 0x11 0x22 */
+    ASSERT_EQ('$', buf[7]);
+    ASSERT_EQ(2, buf[8]); /* channel 2 */
+    ASSERT_MEM_EQ(adata, buf + 11, 2);
+
+    /* Don't drop video/audio — they share the writer, just free manually */
+    free(video.self);
+    free(audio.self);
+    close(fds[0]);
+    close(fds[1]);
+    PASS();
+}
+
 SUITE(transport) {
     RUN_TEST(check_tcp);
     RUN_TEST(check_udp);
     RUN_TEST(sockaddr_get_ipv4);
     RUN_TEST(sockaddr_get_ipv6);
     RUN_TEST(sockaddr_get_unknown);
+    RUN_TEST(check_tcp_multi_channel);
 }
