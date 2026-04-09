@@ -116,10 +116,22 @@ static void ossl_conn_free(Compy_CryptoTlsConn *conn) {
 static ssize_t
 ossl_write(Compy_CryptoTlsConn *conn, const void *data, size_t len) {
     OsslTlsConn *c = conn;
-    if (len > INT_MAX)
-        len = INT_MAX;
-    int ret = SSL_write(c->ssl, data, (int)len);
-    return ret > 0 ? (ssize_t)ret : -1;
+    const uint8_t *p = data;
+    size_t remaining = len;
+    while (remaining > 0) {
+        int chunk = remaining > INT_MAX ? INT_MAX : (int)remaining;
+        int ret = SSL_write(c->ssl, p, chunk);
+        if (ret > 0) {
+            p += ret;
+            remaining -= (size_t)ret;
+            continue;
+        }
+        int err = SSL_get_error(c->ssl, ret);
+        if (err == SSL_ERROR_WANT_WRITE || err == SSL_ERROR_WANT_READ)
+            continue;
+        return -1;
+    }
+    return (ssize_t)len;
 }
 
 static ssize_t ossl_read(Compy_CryptoTlsConn *conn, void *buf, size_t len) {

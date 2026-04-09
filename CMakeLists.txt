@@ -114,6 +114,11 @@ else()
   add_library(${PROJECT_NAME} STATIC ${COMPY_SOURCES})
 endif()
 
+if(COMPY_TSAN)
+  target_compile_options(${PROJECT_NAME} PUBLIC -fsanitize=thread)
+  target_link_options(${PROJECT_NAME} PUBLIC -fsanitize=thread)
+endif()
+
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
   target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
 elseif(CMAKE_C_COMPILER_ID STREQUAL "GNU")

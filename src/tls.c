@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <pthread.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,6 +48,7 @@ void Compy_TlsContext_free(Compy_TlsContext *ctx) {
 struct Compy_TlsConn {
     Compy_CryptoTlsConn *crypto_conn;
     pthread_mutex_t mtx;
+    bool dead; /* set on fatal TLS error — stops further I/O */
 };
 
 Compy_TlsConn *Compy_TlsConn_accept(Compy_TlsContext *ctx, int fd) {
@@ -66,6 +68,7 @@ Compy_TlsConn *Compy_TlsConn_accept(Compy_TlsContext *ctx, int fd) {
     }
 
     self->crypto_conn = crypto_conn;
+    self->dead = false;
     pthread_mutexattr_t attr;
     pthread_mutexattr_init(&attr);
     pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
@@ -77,9 +80,13 @@ Compy_TlsConn *Compy_TlsConn_accept(Compy_TlsContext *ctx, int fd) {
 ssize_t compy_tls_read(Compy_TlsConn *conn, void *buf, size_t len) {
     assert(conn);
     assert(buf);
+    if (conn->dead)
+        return -1;
     pthread_mutex_lock(&conn->mtx);
     ssize_t ret = compy_crypto_tls_ops.read(conn->crypto_conn, buf, len);
     pthread_mutex_unlock(&conn->mtx);
+    if (ret < 0)
+        conn->dead = true;
     return ret;
 }
 
@@ -107,7 +114,13 @@ typedef Compy_TlsConn TlsWriter;
 
 static ssize_t TlsWriter_write(VSelf, CharSlice99 data) {
     VSELF(TlsWriter);
-    return compy_crypto_tls_ops.write(self->crypto_conn, data.ptr, data.len);
+    if (self->dead)
+        return -1;
+    ssize_t ret =
+        compy_crypto_tls_ops.write(self->crypto_conn, data.ptr, data.len);
+    if (ret < 0)
+        self->dead = true;
+    return ret;
 }
 
 static void TlsWriter_lock(VSelf) {
@@ -127,6 +140,8 @@ static size_t TlsWriter_filled(VSelf) {
 
 static int TlsWriter_writef(VSelf, const char *restrict fmt, ...) {
     VSELF(TlsWriter);
+    if (self->dead)
+        return -1;
     va_list ap;
     va_start(ap, fmt);
     char buf[1024];
@@ -134,20 +149,32 @@ static int TlsWriter_writef(VSelf, const char *restrict fmt, ...) {
     va_end(ap);
     if (n > 0) {
         pthread_mutex_lock(&self->mtx);
-        compy_crypto_tls_ops.write(self->crypto_conn, buf, (size_t)n);
+        ssize_t ret =
+            compy_crypto_tls_ops.write(self->crypto_conn, buf, (size_t)n);
         pthread_mutex_unlock(&self->mtx);
+        if (ret < 0) {
+            self->dead = true;
+            return -1;
+        }
     }
     return n;
 }
 
 static int TlsWriter_vwritef(VSelf, const char *restrict fmt, va_list ap) {
     VSELF(TlsWriter);
+    if (self->dead)
+        return -1;
     char buf[1024];
     int n = vsnprintf(buf, sizeof buf, fmt, ap);
     if (n > 0) {
         pthread_mutex_lock(&self->mtx);
-        compy_crypto_tls_ops.write(self->crypto_conn, buf, (size_t)n);
+        ssize_t ret =
+            compy_crypto_tls_ops.write(self->crypto_conn, buf, (size_t)n);
         pthread_mutex_unlock(&self->mtx);
+        if (ret < 0) {
+            self->dead = true;
+            return -1;
+        }
     }
     return n;
 }

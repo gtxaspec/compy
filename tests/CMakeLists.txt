@@ -49,19 +49,35 @@ add_executable(
   auth.c
   base64.c)
 
-if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
-  target_compile_options(tests PRIVATE -Wall -Wextra -fsanitize=address)
-elseif(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-  target_compile_options(tests PRIVATE -Wall -Wextra -fsanitize=address -Wno-misleading-indentation)
+option(COMPY_TSAN "Build tests with ThreadSanitizer instead of AddressSanitizer" OFF)
+
+if(COMPY_TSAN)
+  set(SANITIZER_FLAGS -fsanitize=thread)
+else()
+  set(SANITIZER_FLAGS -fsanitize=address)
 endif()
 
-target_link_options(tests PRIVATE -fsanitize=address)
+if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
+  target_compile_options(tests PRIVATE -Wall -Wextra ${SANITIZER_FLAGS})
+elseif(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+  target_compile_options(tests PRIVATE -Wall -Wextra ${SANITIZER_FLAGS} -Wno-misleading-indentation)
+endif()
+
+target_link_options(tests PRIVATE ${SANITIZER_FLAGS})
 
 target_link_libraries(tests compy)
 target_include_directories(tests PRIVATE ${greatest_SOURCE_DIR})
 
 if(COMPY_TLS_OPENSSL OR COMPY_TLS_WOLFSSL OR COMPY_TLS_MBEDTLS)
   target_sources(tests PRIVATE srtp.c tls.c)
+  # TLS I/O tests use mbedTLS as the client regardless of compy's backend
+  if(NOT COMPY_TLS_MBEDTLS)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(MBEDTLS_TEST REQUIRED mbedtls mbedx509 mbedcrypto)
+    target_include_directories(tests PRIVATE ${MBEDTLS_TEST_INCLUDE_DIRS})
+    target_link_directories(tests PRIVATE ${MBEDTLS_TEST_LIBRARY_DIRS})
+    target_link_libraries(tests ${MBEDTLS_TEST_LIBRARIES})
+  endif()
 endif()
 
 set_target_properties(tests PROPERTIES C_STANDARD 99 C_STANDARD_REQUIRED ON)

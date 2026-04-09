@@ -42,12 +42,35 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake ${{ matrix.backend.pkg }}
+        run: sudo apt-get update && sudo apt-get install -y cmake libmbedtls-dev ${{ matrix.backend.pkg }}
 
       - name: Build and test (${{ matrix.backend.name }})
         run: |
           cd tests
           cmake -B build -D${{ matrix.backend.flag }}=ON
+          cmake --build build
+          ./build/tests
+
+  test-tsan:
+    strategy:
+      fail-fast: false
+      matrix:
+        backend:
+          - { name: OpenSSL, flag: COMPY_TLS_OPENSSL, pkg: libssl-dev }
+          - { name: wolfSSL, flag: COMPY_TLS_WOLFSSL, pkg: libwolfssl-dev }
+          - { name: mbedTLS, flag: COMPY_TLS_MBEDTLS, pkg: libmbedtls-dev }
+    runs-on: ubuntu-latest
+    name: tsan-${{ matrix.backend.name }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake libmbedtls-dev ${{ matrix.backend.pkg }}
+
+      - name: Build and test with TSAN (${{ matrix.backend.name }})
+        run: |
+          cd tests
+          cmake -B build -D${{ matrix.backend.flag }}=ON -DCOMPY_TSAN=ON
           cmake --build build
           ./build/tests
 

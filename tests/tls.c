@@ -342,6 +342,100 @@ TEST tls_multiple_writes(void) {
     PASS();
 }
 
+/* --- Multi-threaded stress test (the test that catches the original bug) ---
+ */
+
+#define STRESS_THREADS    4
+#define STRESS_MSGS       50
+#define STRESS_MSG_LEN    64
+#define STRESS_TOTAL_MSGS (STRESS_THREADS * STRESS_MSGS)
+
+typedef struct {
+    Compy_Writer writer;
+    int thread_id;
+} StressThreadArgs;
+
+static void *stress_writer_thread(void *arg) {
+    StressThreadArgs *a = arg;
+    char msg[STRESS_MSG_LEN];
+
+    for (int i = 0; i < STRESS_MSGS; i++) {
+        /* Each message: "T<thread_id>M<msg_num>:" padded to fixed length */
+        int n = snprintf(msg, sizeof msg, "T%dM%03d:", a->thread_id, i);
+        memset(msg + n, 'X', STRESS_MSG_LEN - n - 1);
+        msg[STRESS_MSG_LEN - 1] = '\n';
+
+        VCALL(a->writer, lock);
+        VCALL(a->writer, write, CharSlice99_new(msg, STRESS_MSG_LEN));
+        VCALL(a->writer, unlock);
+    }
+    return NULL;
+}
+
+TEST tls_multithread_stress(void) {
+    /*
+     * This is the test that would have caught the original RTSPS bug.
+     * 4 threads (simulating video, audio, RTCP, RTSP response writers)
+     * all write to the same TLS connection concurrently. The client
+     * reads everything and verifies no messages are corrupted.
+     *
+     * Under TSAN, this also detects data races on the TLS context.
+     */
+    TlsTestPair p;
+    ASSERT_EQ(0, tls_pair_init(&p));
+
+    Compy_Writer w = compy_tls_writer(p.server);
+
+    pthread_t threads[STRESS_THREADS];
+    StressThreadArgs args[STRESS_THREADS];
+
+    for (int i = 0; i < STRESS_THREADS; i++) {
+        args[i].writer = w;
+        args[i].thread_id = i;
+        pthread_create(&threads[i], NULL, stress_writer_thread, &args[i]);
+    }
+
+    /* Read all messages on client side */
+    size_t expected_total = STRESS_TOTAL_MSGS * STRESS_MSG_LEN;
+    char *recv_buf = malloc(expected_total + 1);
+    ASSERT(recv_buf);
+    size_t total = 0;
+
+    while (total < expected_total) {
+        int n = mbedtls_ssl_read(
+            &p.client.ssl, (unsigned char *)recv_buf + total,
+            expected_total - total);
+        if (n <= 0)
+            break;
+        total += (size_t)n;
+    }
+
+    for (int i = 0; i < STRESS_THREADS; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    ASSERT_EQ(expected_total, total);
+
+    /* Verify each message: must start with "T<digit>M<digits>:" and end
+     * with '\n'. If TLS writes were interleaved without locking, messages
+     * would be torn — a 'T' would appear mid-message or the newline
+     * would be missing. */
+    int msg_count = 0;
+    for (size_t off = 0; off < total; off += STRESS_MSG_LEN) {
+        ASSERT_EQ('T', recv_buf[off]);
+        ASSERT(recv_buf[off + 1] >= '0' && recv_buf[off + 1] <= '3');
+        ASSERT_EQ('M', recv_buf[off + 2]);
+        ASSERT_EQ(':', recv_buf[off + 6]);
+        ASSERT_EQ('\n', recv_buf[off + STRESS_MSG_LEN - 1]);
+        msg_count++;
+    }
+    ASSERT_EQ(STRESS_TOTAL_MSGS, msg_count);
+
+    free(recv_buf);
+    tls_pair_free(&p);
+    PASS();
+}
+
 SUITE(tls) {
     RUN_TEST(tls_context_load_valid);
     RUN_TEST(tls_context_load_invalid);
@@ -351,4 +445,5 @@ SUITE(tls) {
     RUN_TEST(tls_client_to_server_read);
     RUN_TEST(tls_writer_locked_multi_write);
     RUN_TEST(tls_multiple_writes);
+    RUN_TEST(tls_multithread_stress);
 }

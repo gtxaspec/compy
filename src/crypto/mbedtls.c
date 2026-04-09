@@ -196,8 +196,19 @@ static void mbed_conn_free(Compy_CryptoTlsConn *conn) {
 static ssize_t
 mbed_write(Compy_CryptoTlsConn *conn, const void *data, size_t len) {
     MbedTlsConn *c = conn;
-    int ret = mbedtls_ssl_write(&c->ssl, data, len);
-    return ret >= 0 ? (ssize_t)ret : -1;
+    const uint8_t *p = data;
+    size_t remaining = len;
+    while (remaining > 0) {
+        int ret = mbedtls_ssl_write(&c->ssl, p, remaining);
+        if (ret == MBEDTLS_ERR_SSL_WANT_WRITE ||
+            ret == MBEDTLS_ERR_SSL_WANT_READ)
+            continue;
+        if (ret < 0)
+            return -1;
+        p += ret;
+        remaining -= (size_t)ret;
+    }
+    return (ssize_t)len;
 }
 
 static ssize_t mbed_read(Compy_CryptoTlsConn *conn, void *buf, size_t len) {
