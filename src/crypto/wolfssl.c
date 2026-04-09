@@ -69,17 +69,23 @@ static Compy_CryptoTlsConn *wolf_accept(Compy_CryptoTlsCtx *ctx, int fd) {
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
 
     WOLFSSL *ssl = wolfSSL_new(c->ctx);
-    if (!ssl)
-        return NULL;
+    if (!ssl) {
+        goto clear_timeout;
+    }
 
     wolfSSL_set_fd(ssl, fd);
     if (wolfSSL_accept(ssl) != SSL_SUCCESS) {
         wolfSSL_free(ssl);
-        return NULL;
+        ssl = NULL;
+        goto clear_timeout;
     }
 
+clear_timeout:
     tv = (struct timeval){0};
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+
+    if (!ssl)
+        return NULL;
 
     WolfTlsConn *conn = malloc(sizeof *conn);
     if (!conn) {

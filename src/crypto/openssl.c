@@ -73,22 +73,27 @@ static Compy_CryptoTlsConn *ossl_accept(Compy_CryptoTlsCtx *ctx, int fd) {
 
     SSL *ssl = SSL_new(c->ssl_ctx);
     if (!ssl) {
-        return NULL;
+        goto clear_timeout;
     }
 
     if (SSL_set_fd(ssl, fd) != 1) {
         SSL_free(ssl);
-        return NULL;
+        ssl = NULL;
+        goto clear_timeout;
     }
 
     if (SSL_accept(ssl) != 1) {
         SSL_free(ssl);
-        return NULL;
+        ssl = NULL;
+        goto clear_timeout;
     }
 
-    /* Clear timeout for normal I/O */
+clear_timeout:
     tv = (struct timeval){0};
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+
+    if (!ssl)
+        return NULL;
 
     OsslTlsConn *conn = malloc(sizeof *conn);
     if (!conn) {

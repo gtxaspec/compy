@@ -147,8 +147,11 @@ static Compy_CryptoTlsConn *mbed_accept(Compy_CryptoTlsCtx *ctx, int fd) {
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
 
     MbedTlsConn *conn = calloc(1, sizeof *conn);
-    if (!conn)
+    if (!conn) {
+        tv = (struct timeval){0};
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
         return NULL;
+    }
 
     mbedtls_ssl_init(&conn->ssl);
     mbedtls_net_init(&conn->net);
@@ -156,6 +159,8 @@ static Compy_CryptoTlsConn *mbed_accept(Compy_CryptoTlsCtx *ctx, int fd) {
 
     if (mbedtls_ssl_setup(&conn->ssl, &c->conf) != 0) {
         free(conn);
+        tv = (struct timeval){0};
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
         return NULL;
     }
 
@@ -168,6 +173,8 @@ static Compy_CryptoTlsConn *mbed_accept(Compy_CryptoTlsCtx *ctx, int fd) {
             ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
             mbedtls_ssl_free(&conn->ssl);
             free(conn);
+            tv = (struct timeval){0};
+            setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
             return NULL;
         }
     }
@@ -261,14 +268,23 @@ static void mbed_aes128_ctr(
     psa_set_key_algorithm(&attr, PSA_ALG_CTR);
 
     psa_key_id_t kid;
-    psa_import_key(&attr, key, 16, &kid);
+    if (psa_import_key(&attr, key, 16, &kid) != PSA_SUCCESS)
+        return;
 
     psa_cipher_operation_t op = PSA_CIPHER_OPERATION_INIT;
-    psa_cipher_encrypt_setup(&op, kid, PSA_ALG_CTR);
-    psa_cipher_set_iv(&op, iv, 16);
+    if (psa_cipher_encrypt_setup(&op, kid, PSA_ALG_CTR) != PSA_SUCCESS ||
+        psa_cipher_set_iv(&op, iv, 16) != PSA_SUCCESS) {
+        psa_cipher_abort(&op);
+        psa_destroy_key(kid);
+        return;
+    }
 
     size_t olen;
-    psa_cipher_update(&op, data, len, data, len, &olen);
+    if (psa_cipher_update(&op, data, len, data, len, &olen) != PSA_SUCCESS) {
+        psa_cipher_abort(&op);
+        psa_destroy_key(kid);
+        return;
+    }
     psa_cipher_finish(&op, data + olen, len - olen, &olen);
     psa_destroy_key(kid);
 #endif
