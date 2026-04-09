@@ -296,15 +296,14 @@ static int Compy_SrtpTransport_transmit(VSelf, Compy_IoVecSlice bufs) {
         self->session_key, self->session_salt, ssrc, index, packet + header_len,
         total - header_len);
 
-    /* Compute authentication tag over: RTP header + encrypted payload + ROC */
-    uint8_t auth_input[SRTP_MAX_PACKET_SIZE + 4];
-    memcpy(auth_input, packet, total);
+    /* Compute authentication tag over: RTP header + encrypted payload + ROC.
+     * Append ROC into packet[] slack space (bounds already checked above). */
     uint32_t roc_be = htonl(self->roc);
-    memcpy(auth_input + total, &roc_be, 4);
+    memcpy(packet + total, &roc_be, 4);
 
     uint8_t hmac_out[20];
     compy_crypto_srtp_ops.hmac_sha1(
-        self->auth_key, sizeof self->auth_key, auth_input, total + 4, hmac_out);
+        self->auth_key, sizeof self->auth_key, packet, total + 4, hmac_out);
 
     /* Append truncated auth tag */
     memcpy(packet + total, hmac_out, (size_t)self->auth_tag_len);
@@ -481,6 +480,7 @@ struct Compy_SrtpRecvCtx {
     uint64_t replay_window;
     /* SRTCP state */
     uint32_t srtcp_highest_index;
+    uint64_t srtcp_replay_window;
     /* Common */
     int auth_tag_len;
 };
@@ -519,6 +519,7 @@ compy_srtp_recv_new(Compy_SrtpSuite suite, const Compy_SrtpKeyMaterial *key) {
     self->initialized = false;
     self->replay_window = 0;
     self->srtcp_highest_index = 0;
+    self->srtcp_replay_window = 0;
 
     switch (suite) {
     case Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80:
@@ -759,11 +760,27 @@ int compy_srtcp_recv_unprotect(
     bool encrypted = (srtcp_index & 0x80000000) != 0;
     srtcp_index &= 0x7FFFFFFF;
 
-    /* Reject replayed SRTCP packets (must be monotonically increasing) */
-    if (srtcp_index < ctx->srtcp_highest_index) {
-        return -1;
+    /* Replay protection for SRTCP using a sliding window */
+    if (srtcp_index > ctx->srtcp_highest_index) {
+        /* New packet ahead of window — accept and advance */
+        uint32_t shift = srtcp_index - ctx->srtcp_highest_index;
+        if (shift < SRTP_REPLAY_WINDOW_SIZE) {
+            ctx->srtcp_replay_window <<= shift;
+        } else {
+            ctx->srtcp_replay_window = 0;
+        }
+        ctx->srtcp_replay_window |= 1;
+        ctx->srtcp_highest_index = srtcp_index;
+    } else {
+        uint32_t delta = ctx->srtcp_highest_index - srtcp_index;
+        if (delta >= SRTP_REPLAY_WINDOW_SIZE) {
+            return -1; /* Too old */
+        }
+        if (ctx->srtcp_replay_window & ((uint64_t)1 << delta)) {
+            return -1; /* Already seen */
+        }
+        ctx->srtcp_replay_window |= ((uint64_t)1 << delta);
     }
-    ctx->srtcp_highest_index = srtcp_index + 1;
 
     /* Extract SSRC from RTCP header (bytes 4-7) */
     uint32_t ssrc;

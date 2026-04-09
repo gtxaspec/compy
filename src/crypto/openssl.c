@@ -1,5 +1,6 @@
 #include <compy/priv/crypto.h>
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -99,12 +100,16 @@ static void ossl_conn_free(Compy_CryptoTlsConn *conn) {
 static ssize_t
 ossl_write(Compy_CryptoTlsConn *conn, const void *data, size_t len) {
     OsslTlsConn *c = conn;
+    if (len > INT_MAX)
+        len = INT_MAX;
     int ret = SSL_write(c->ssl, data, (int)len);
     return ret > 0 ? (ssize_t)ret : -1;
 }
 
 static ssize_t ossl_read(Compy_CryptoTlsConn *conn, void *buf, size_t len) {
     OsslTlsConn *c = conn;
+    if (len > INT_MAX)
+        len = INT_MAX;
     int ret = SSL_read(c->ssl, buf, (int)len);
     if (ret > 0) {
         return (ssize_t)ret;
@@ -149,6 +154,8 @@ static void ossl_hmac_sha1(
 }
 
 static int ossl_random_bytes(uint8_t *buf, size_t len) {
+    if (len > INT_MAX)
+        return -1;
     return RAND_bytes(buf, (int)len) == 1 ? 0 : -1;
 }
 

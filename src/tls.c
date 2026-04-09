@@ -66,7 +66,11 @@ Compy_TlsConn *Compy_TlsConn_accept(Compy_TlsContext *ctx, int fd) {
     }
 
     self->crypto_conn = crypto_conn;
-    pthread_mutex_init(&self->mtx, NULL);
+    pthread_mutexattr_t attr;
+    pthread_mutexattr_init(&attr);
+    pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+    pthread_mutex_init(&self->mtx, &attr);
+    pthread_mutexattr_destroy(&attr);
     return self;
 }
 

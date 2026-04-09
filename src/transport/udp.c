@@ -98,9 +98,9 @@ int compy_dgram_socket(int af, const void *restrict addr, uint16_t port) {
         return -1;
     }
 
-    int fd;
-    if ((fd = socket(af, SOCK_DGRAM, 0)) == -1) {
-        goto fail;
+    int fd = socket(af, SOCK_DGRAM, 0);
+    if (fd == -1) {
+        return -1;
     }
 
     if (connect(
@@ -108,7 +108,8 @@ int compy_dgram_socket(int af, const void *restrict addr, uint16_t port) {
             AF_INET == af ? sizeof(struct sockaddr_in)
                           : sizeof(struct sockaddr_in6)) == -1) {
         perror("connect");
-        goto fail;
+        close(fd);
+        return -1;
     }
 
     const int enable_pmtud = 1;
@@ -116,14 +117,11 @@ int compy_dgram_socket(int af, const void *restrict addr, uint16_t port) {
             fd, IPPROTO_IP, IP_PMTUDISC_WANT, &enable_pmtud,
             sizeof enable_pmtud) == -1) {
         perror("setsockopt IP_PMTUDISC_WANT");
-        goto fail;
+        close(fd);
+        return -1;
     }
 
     return fd;
-
-fail:
-    close(fd);
-    return -1;
 }
 
 static int

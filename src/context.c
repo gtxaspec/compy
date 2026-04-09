@@ -99,7 +99,9 @@ compy_respond(Compy_Context *ctx, Compy_StatusCode code, const char *reason) {
         .cseq = ctx->cseq,
     };
 
+    VCALL(ctx->writer, lock);
     ctx->ret = Compy_Response_serialize(&response, ctx->writer);
+    VCALL(ctx->writer, unlock);
     return ctx->ret;
 }
 
