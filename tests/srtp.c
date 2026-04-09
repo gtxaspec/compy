@@ -971,6 +971,96 @@ TEST srtcp_too_old_rejected(void) {
     PASS();
 }
 
+TEST srtp_dual_stream_independence(void) {
+    /* RSD creates separate video and audio SRTP transports with different
+     * keys on the same connection. Verify they encrypt independently. */
+    Compy_SrtpKeyMaterial video_key, audio_key;
+    ASSERT_EQ(0, compy_srtp_generate_key(&video_key));
+    ASSERT_EQ(0, compy_srtp_generate_key(&audio_key));
+
+    /* Video stream */
+    int vfds[2];
+    ASSERT(socketpair(AF_UNIX, SOCK_SEQPACKET, 0, vfds) == 0);
+    Compy_Transport vudp = compy_transport_udp(vfds[0]);
+    Compy_Transport vsrtp = compy_transport_srtp(
+        vudp, Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &video_key);
+    Compy_SrtpRecvCtx *vrecv = compy_srtp_recv_new(
+        Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &video_key);
+
+    /* Audio stream */
+    int afds[2];
+    ASSERT(socketpair(AF_UNIX, SOCK_SEQPACKET, 0, afds) == 0);
+    Compy_Transport audp = compy_transport_udp(afds[0]);
+    Compy_Transport asrtp = compy_transport_srtp(
+        audp, Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &audio_key);
+    Compy_SrtpRecvCtx *arecv = compy_srtp_recv_new(
+        Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &audio_key);
+
+    /* Send video packet */
+    uint8_t vpkt[32];
+    memset(vpkt, 0, sizeof vpkt);
+    vpkt[0] = 0x80;
+    vpkt[1] = 96;
+    vpkt[3] = 1;
+    vpkt[8] = 0x11;
+    vpkt[9] = 0x22;
+    vpkt[10] = 0x33;
+    vpkt[11] = 0x44;
+    memset(vpkt + 12, 0xAA, 20);
+
+    struct iovec vbufs[] = {{.iov_base = vpkt, .iov_len = sizeof vpkt}};
+    Compy_IoVecSlice vslice = Slice99_typed_from_array(vbufs);
+    ASSERT_EQ(0, VCALL(vsrtp, transmit, vslice));
+
+    /* Send audio packet */
+    uint8_t apkt[32];
+    memset(apkt, 0, sizeof apkt);
+    apkt[0] = 0x80;
+    apkt[1] = 0; /* PCMU */
+    apkt[3] = 1;
+    apkt[8] = 0x55;
+    apkt[9] = 0x66;
+    apkt[10] = 0x77;
+    apkt[11] = 0x88;
+    memset(apkt + 12, 0xBB, 20);
+
+    struct iovec abufs[] = {{.iov_base = apkt, .iov_len = sizeof apkt}};
+    Compy_IoVecSlice aslice = Slice99_typed_from_array(abufs);
+    ASSERT_EQ(0, VCALL(asrtp, transmit, aslice));
+
+    /* Decrypt video with video key — should succeed */
+    uint8_t venc[256];
+    ssize_t vn = recv(vfds[1], venc, sizeof venc, MSG_DONTWAIT);
+    ASSERT(vn > 0);
+    size_t vlen = (size_t)vn;
+    ASSERT_EQ(0, compy_srtp_recv_unprotect(vrecv, venc, &vlen));
+    ASSERT_MEM_EQ(vpkt, venc, sizeof vpkt);
+
+    /* Decrypt audio with audio key — should succeed */
+    uint8_t aenc[256];
+    ssize_t an = recv(afds[1], aenc, sizeof aenc, MSG_DONTWAIT);
+    ASSERT(an > 0);
+    size_t alen = (size_t)an;
+    ASSERT_EQ(0, compy_srtp_recv_unprotect(arecv, aenc, &alen));
+    ASSERT_MEM_EQ(apkt, aenc, sizeof apkt);
+
+    /* Cross-decrypt: video with audio key — must fail */
+    ASSERT_EQ(0, VCALL(vsrtp, transmit, vslice));
+    uint8_t venc2[256];
+    ssize_t vn2 = recv(vfds[1], venc2, sizeof venc2, MSG_DONTWAIT);
+    ASSERT(vn2 > 0);
+    size_t vlen2 = (size_t)vn2;
+    ASSERT_EQ(-1, compy_srtp_recv_unprotect(arecv, venc2, &vlen2));
+
+    compy_srtp_recv_free(vrecv);
+    compy_srtp_recv_free(arecv);
+    VCALL_SUPER(vsrtp, Compy_Droppable, drop);
+    VCALL_SUPER(asrtp, Compy_Droppable, drop);
+    close(vfds[1]);
+    close(afds[1]);
+    PASS();
+}
+
 SUITE(srtp) {
     RUN_TEST(srtp_generate_key_nonzero);
     RUN_TEST(srtp_crypto_attr_format);
@@ -994,4 +1084,5 @@ SUITE(srtp) {
     RUN_TEST(srtp_sequential_packets_decrypt);
     RUN_TEST(srtp_decrypt_truncated_rejected);
     RUN_TEST(srtcp_too_old_rejected);
+    RUN_TEST(srtp_dual_stream_independence);
 }

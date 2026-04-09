@@ -283,6 +283,52 @@ TEST rtcp_sr_reflects_rtp_stats(void) {
     PASS();
 }
 
+TEST rtp_extension_wire_format(void) {
+    /* RWD uses RFC 8285 one-byte header extensions for WebRTC */
+    int fds[2];
+    ASSERT(socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds) == 0);
+
+    Compy_Transport t = compy_transport_udp(fds[0]);
+    Compy_RtpTransport *rtp = Compy_RtpTransport_new(t, 96, 90000);
+
+    /* Set a one-byte extension: ID=1, 2-byte value */
+    uint8_t ext_val[2] = {0xAB, 0xCD};
+    Compy_RtpTransport_set_extension(rtp, 1, ext_val, 2);
+
+    uint8_t payload[8] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88};
+    int ret __attribute__((unused)) = Compy_RtpTransport_send_packet(
+        rtp, Compy_RtpTimestamp_Raw(1000), true, U8Slice99_empty(),
+        U8Slice99_new(payload, sizeof payload));
+
+    uint8_t buf[256];
+    ssize_t n = recv(fds[1], buf, sizeof buf, MSG_DONTWAIT);
+    ASSERT(n > 0);
+
+    /* Byte 0: V=2, P=0, X=1, CC=0 → 0x90 */
+    ASSERT_EQ(0x90, buf[0]);
+
+    /* Extension profile at bytes 12-13: 0xBEDE (RFC 8285 one-byte) */
+    ASSERT_EQ(0xBE, buf[12]);
+    ASSERT_EQ(0xDE, buf[13]);
+
+    /* Extension length at bytes 14-15: 1 (one 32-bit word) */
+    ASSERT_EQ(0x00, buf[14]);
+    ASSERT_EQ(0x01, buf[15]);
+
+    /* Extension data at byte 16: ID=1, L=1 (len-1) → 0x11 */
+    ASSERT_EQ(0x11, buf[16]);
+    /* Extension value at bytes 17-18 */
+    ASSERT_EQ(0xAB, buf[17]);
+    ASSERT_EQ(0xCD, buf[18]);
+
+    /* Payload starts at byte 20 (12 header + 4 ext hdr + 4 ext data) */
+    ASSERT_MEM_EQ(payload, buf + 20, 8);
+
+    VCALL(DYN(Compy_RtpTransport, Compy_Droppable, rtp), drop);
+    close(fds[1]);
+    PASS();
+}
+
 SUITE(rtcp) {
     RUN_TEST(rtcp_send_sr);
     RUN_TEST(rtcp_send_bye);
@@ -291,4 +337,5 @@ SUITE(rtcp) {
     RUN_TEST(rtp_ssrc_nonzero_entropy);
     RUN_TEST(rtp_seq_increments);
     RUN_TEST(rtcp_sr_reflects_rtp_stats);
+    RUN_TEST(rtp_extension_wire_format);
 }
