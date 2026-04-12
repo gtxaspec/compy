@@ -127,8 +127,10 @@ endif()
 
 target_compile_options(${PROJECT_NAME} PRIVATE -ffunction-sections -fdata-sections
   -fno-asynchronous-unwind-tables -fmerge-all-constants -fno-ident)
-if(CMAKE_CROSSCOMPILING)
-  target_compile_options(${PROJECT_NAME} PRIVATE -flto)
+include(CheckIPOSupported)
+check_ipo_supported(RESULT ipo_supported)
+if(ipo_supported)
+  set_property(TARGET ${PROJECT_NAME} PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
 
 if(NOT COMPY_FULL_MACRO_EXPANSION)
