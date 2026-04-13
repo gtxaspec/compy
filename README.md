@@ -47,9 +47,6 @@ A small, portable [RTSP 1.0] server library in C99, designed for embedded IP cam
    - [x] OpenSSL / LibreSSL
    - [x] wolfSSL
    - [x] mbedTLS (3.6.x and 4.0)
-   - [x] BearSSL (SRTP crypto only; TLS server setup requires additional PEM parsing)
- - Known limitations:
-   - BearSSL TLS server context is stubbed (SRTP operations work)
 
 [RFC 2326]: https://datatracker.ietf.org/doc/html/rfc2326
 [RFC 2617]: https://datatracker.ietf.org/doc/html/rfc2617
@@ -89,7 +86,6 @@ target_link_libraries(MyProject compy)
 | `COMPY_TLS_OPENSSL` | Use OpenSSL for TLS/SRTP. | `OFF` |
 | `COMPY_TLS_WOLFSSL` | Use wolfSSL for TLS/SRTP. | `OFF` |
 | `COMPY_TLS_MBEDTLS` | Use mbedTLS for TLS/SRTP. | `OFF` |
-| `COMPY_TLS_BEARSSL` | Use BearSSL for TLS/SRTP (crypto only). | `OFF` |
 
 ## Usage
 
