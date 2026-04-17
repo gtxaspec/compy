@@ -72,7 +72,8 @@ static int Compy_TcpTransport_transmit(VSelf, Compy_IoVecSlice bufs) {
 
     if (total > sizeof stackbuf) {
         buf = malloc(total);
-        if (!buf) return -1;
+        if (!buf)
+            return -1;
     }
 
     memcpy(buf, &header, sizeof header);
@@ -86,7 +87,8 @@ static int Compy_TcpTransport_transmit(VSelf, Compy_IoVecSlice bufs) {
     ssize_t ret = VCALL(self->w, write, CharSlice99_new((char *)buf, total));
     VCALL(self->w, unlock);
 
-    if (buf != stackbuf) free(buf);
+    if (buf != stackbuf)
+        free(buf);
     return (ret == (ssize_t)total) ? 0 : -1;
 }
 
