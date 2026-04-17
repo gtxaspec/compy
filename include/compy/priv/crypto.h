@@ -55,6 +55,18 @@ typedef struct {
 
     /** Bytes buffered internally by the TLS library (for filled()). */
     size_t (*pending)(Compy_CryptoTlsConn *conn);
+
+    /**
+     * Apply a ciphersuite preference preset to the context. Optional:
+     * backends that leave this NULL signal that cipher preference is
+     * unsupported. The @p pref value is a Compy_TlsCipherPreference
+     * cast to int; kept as int here so this private header does not
+     * depend on the public tls.h enum for ABI stability.
+     *
+     * Must be callable before the first accept() on the context.
+     * Returns 0 on success, -1 on unknown preset or backend error.
+     */
+    int (*ctx_set_cipher_preference)(Compy_CryptoTlsCtx *ctx, int pref);
 } Compy_CryptoTlsOps;
 
 /**

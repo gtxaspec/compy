@@ -52,6 +52,51 @@ Compy_TlsContext_new(Compy_TlsConfig config) COMPY_PRIV_MUST_USE;
 void Compy_TlsContext_free(Compy_TlsContext *ctx);
 
 /**
+ * TLS ciphersuite preference presets.
+ *
+ * Selected via Compy_TlsContext_set_cipher_preference(). These let the
+ * application steer the server toward a particular cipher family when
+ * the choice has meaningful performance or compliance implications on
+ * the target platform. The actual TLS cipher suite enums are managed
+ * inside compy; applications only pick the preset.
+ */
+typedef enum {
+    /** Backend defaults (typically GCM-first in TLS 1.3). */
+    COMPY_TLS_CIPHER_DEFAULT = 0,
+
+    /**
+     * TLS 1.3: allow only CHACHA20-POLY1305-SHA256. Clients that offer
+     * it will select it; clients that don't fall back to TLS 1.2.
+     *
+     * TLS 1.2: prefer AES-CBC-SHA256 → CCM → GCM (order chosen for
+     * servers where AES runs through a hardware engine like /dev/aes
+     * but there is no HW GHASH, so the CBC/CCM path has less per-record
+     * overhead than GCM).
+     *
+     * Motivation: on Ingenic T-series and similar slow MIPS SoCs each
+     * AES-GCM TLS record pays an ioctl + DMA setup + 4-bit-table GHASH.
+     * Scalar ChaCha20-Poly1305 in userspace wins at typical RTSP-over-
+     * TLS bitrates (~1-5 Mbps) because it has no per-record fixed cost.
+     */
+    COMPY_TLS_CIPHER_CHACHA20_ONLY,
+} Compy_TlsCipherPreference;
+
+/**
+ * Sets the ciphersuite preference for all connections accepted through
+ * this context. Must be called before the first Compy_TlsConn_accept().
+ *
+ * @param[in] ctx TLS context.
+ * @param[in] pref Preset to apply.
+ *
+ * @return 0 on success; -1 if the backend does not support ciphersuite
+ *         preference, or if @p pref is not a recognized preset.
+ *
+ * @pre `ctx != NULL`
+ */
+int Compy_TlsContext_set_cipher_preference(
+    Compy_TlsContext *ctx, Compy_TlsCipherPreference pref);
+
+/**
  * Opaque per-connection TLS state.
  */
 typedef struct Compy_TlsConn Compy_TlsConn;

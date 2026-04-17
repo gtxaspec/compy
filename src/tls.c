@@ -43,6 +43,15 @@ void Compy_TlsContext_free(Compy_TlsContext *ctx) {
     }
 }
 
+int Compy_TlsContext_set_cipher_preference(
+    Compy_TlsContext *ctx, Compy_TlsCipherPreference pref) {
+    assert(ctx);
+    if (!compy_crypto_tls_ops.ctx_set_cipher_preference)
+        return -1;
+    return compy_crypto_tls_ops.ctx_set_cipher_preference(
+        ctx->crypto_ctx, (int)pref);
+}
+
 /* --- TLS Connection --- */
 
 struct Compy_TlsConn {

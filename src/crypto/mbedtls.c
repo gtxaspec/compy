@@ -1,4 +1,5 @@
 #include <compy/priv/crypto.h>
+#include <compy/tls.h> /* Compy_TlsCipherPreference enum */
 
 #include <stdlib.h>
 #include <string.h>
@@ -138,6 +139,59 @@ static void mbed_ctx_free(Compy_CryptoTlsCtx *ctx) {
 #endif
         free(c);
     }
+}
+
+/*
+ * Ciphersuite preference presets. mbedtls stores the passed list by
+ * pointer, so it must have static storage duration.
+ *
+ * CHACHA20_ONLY list:
+ *   TLS 1.3: only CHACHA20-POLY1305-SHA256 — forces clients that offer
+ *       it to pick it; others fall back to TLS 1.2.
+ *   TLS 1.2: ordered for best performance on servers with HW AES but
+ *       no HW GHASH — CBC-SHA256 → CCM → GCM, then ChaCha20 as tail.
+ */
+static const int mbed_cipher_chacha20_only[] = {
+#if defined(MBEDTLS_SSL_PROTO_TLS1_3)
+    MBEDTLS_TLS1_3_CHACHA20_POLY1305_SHA256,
+#endif
+    MBEDTLS_TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,
+    MBEDTLS_TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384,
+    MBEDTLS_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8,
+    MBEDTLS_TLS_ECDHE_ECDSA_WITH_AES_128_CCM,
+    MBEDTLS_TLS_ECDHE_ECDSA_WITH_AES_256_CCM_8,
+    MBEDTLS_TLS_ECDHE_ECDSA_WITH_AES_256_CCM,
+    MBEDTLS_TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+    MBEDTLS_TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+    MBEDTLS_TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
+    MBEDTLS_TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384,
+    MBEDTLS_TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+    MBEDTLS_TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+    MBEDTLS_TLS_RSA_WITH_AES_128_CCM_8,
+    MBEDTLS_TLS_RSA_WITH_AES_128_CCM,
+    MBEDTLS_TLS_RSA_WITH_AES_128_GCM_SHA256,
+    MBEDTLS_TLS_RSA_WITH_AES_128_CBC_SHA256,
+    MBEDTLS_TLS_RSA_WITH_AES_256_CBC_SHA256,
+    0
+};
+
+static int
+mbed_ctx_set_cipher_preference(Compy_CryptoTlsCtx *ctx, int pref) {
+    MbedTlsCtx *c = ctx;
+    switch ((Compy_TlsCipherPreference)pref) {
+    case COMPY_TLS_CIPHER_DEFAULT:
+        /* Passing NULL restores mbedtls's built-in default list. */
+        mbedtls_ssl_conf_ciphersuites(&c->conf, NULL);
+        return 0;
+    case COMPY_TLS_CIPHER_CHACHA20_ONLY:
+        mbedtls_ssl_conf_ciphersuites(&c->conf, mbed_cipher_chacha20_only);
+        /* Server-preference order affects TLS 1.2 selection only;
+         * TLS 1.3 is steered by narrowing the allow-list above. */
+        mbedtls_ssl_conf_preference_order(
+            &c->conf, MBEDTLS_SSL_SRV_CIPHERSUITE_ORDER_SERVER);
+        return 0;
+    }
+    return -1;
 }
 
 static Compy_CryptoTlsConn *mbed_accept(Compy_CryptoTlsCtx *ctx, int fd) {
@@ -362,6 +416,7 @@ const Compy_CryptoTlsOps compy_crypto_tls_ops = {
     .read = mbed_read,
     .shutdown = mbed_shutdown,
     .pending = mbed_pending,
+    .ctx_set_cipher_preference = mbed_ctx_set_cipher_preference,
 };
 
 const Compy_CryptoSrtpOps compy_crypto_srtp_ops = {
