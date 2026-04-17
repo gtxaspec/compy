@@ -185,12 +185,13 @@ static int mbed_ctx_set_cipher_preference(Compy_CryptoTlsCtx *ctx, int pref) {
         mbedtls_ssl_conf_ciphersuites(&c->conf, mbed_cipher_chacha20_only);
         /* Server-preference order affects TLS 1.2 selection only;
          * TLS 1.3 is steered by narrowing the allow-list above.
-         * The API is only compiled into mbedtls when both TLS 1.2 and
-         * the server role are enabled — some stripped-down builds omit
-         * it, in which case the allow-list alone still does the right
-         * thing (the client's TLS 1.2 preference picks from a set we
-         * already biased toward HW-friendly suites). */
-#if defined(MBEDTLS_SSL_SRV_C) && defined(MBEDTLS_SSL_PROTO_TLS1_2)
+         *
+         * mbedtls_ssl_conf_preference_order + the SERVER order constant
+         * were added in mbedtls 3.0. On older builds (Ubuntu 22.04 ships
+         * 2.28.x in libmbedtls-dev) the symbols don't exist; skip the
+         * call. The allow-list alone still biases TLS 1.2 outcomes toward
+         * HW-friendly suites — the client picks from a narrower menu. */
+#if MBEDTLS_VERSION_NUMBER >= 0x03000000
         mbedtls_ssl_conf_preference_order(
             &c->conf, MBEDTLS_SSL_SRV_CIPHERSUITE_ORDER_SERVER);
 #endif
