@@ -1,6 +1,8 @@
 #include <compy/writer.h>
 
 #include <assert.h>
+#include <errno.h>
+#include <unistd.h>
 
 typedef int FdWriter;
 
@@ -8,7 +10,24 @@ static ssize_t FdWriter_write(VSelf, CharSlice99 data) {
     VSELF(FdWriter);
     assert(self);
 
-    return write(*self, data.ptr, data.len);
+    const char *p = data.ptr;
+    size_t remaining = data.len;
+
+    while (remaining > 0) {
+        ssize_t n = write(*self, p, remaining);
+        if (n > 0) {
+            p += n;
+            remaining -= (size_t)n;
+        } else if (n == 0) {
+            break;
+        } else {
+            if (errno == EINTR)
+                continue;
+            return -1;
+        }
+    }
+
+    return (ssize_t)(data.len - remaining);
 }
 
 static void FdWriter_lock(VSelf) {
