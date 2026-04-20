@@ -1,6 +1,7 @@
 #include <compy/rtcp.h>
 
 #include <assert.h>
+#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -46,11 +47,30 @@ static void Compy_Rtcp_drop(VSelf) {
 
 implExtern(Compy_Droppable, Compy_Rtcp);
 
-static void get_ntp_timestamp(uint32_t *msw, uint32_t *lsw) {
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
+/*
+ * NTP timestamp derived from CLOCK_MONOTONIC so the NTP-RTP relationship
+ * in Sender Reports is consistent (RTP timestamps also come from a
+ * monotonic source). A one-time offset converts monotonic time to the
+ * NTP epoch. Using CLOCK_REALTIME directly would drift relative to the
+ * RTP clock, causing clients to recalibrate PTS on each SR.
+ */
+static int64_t g_mono_to_ntp_sec;
+static pthread_once_t g_ntp_once = PTHREAD_ONCE_INIT;
 
-    *msw = (uint32_t)(ts.tv_sec + NTP_EPOCH_OFFSET);
+static void ntp_init_once(void) {
+    struct timespec rt, mt;
+    clock_gettime(CLOCK_REALTIME, &rt);
+    clock_gettime(CLOCK_MONOTONIC, &mt);
+    g_mono_to_ntp_sec = (int64_t)(rt.tv_sec - mt.tv_sec) + NTP_EPOCH_OFFSET;
+}
+
+static void get_ntp_timestamp(uint32_t *msw, uint32_t *lsw) {
+    pthread_once(&g_ntp_once, ntp_init_once);
+
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+
+    *msw = (uint32_t)(ts.tv_sec + g_mono_to_ntp_sec);
     *lsw = (uint32_t)(((uint64_t)ts.tv_nsec << 32) / 1000000000ULL);
 }
 
@@ -64,7 +84,7 @@ int Compy_Rtcp_send_sr(Compy_Rtcp *self) {
         .ssrc = Compy_RtpTransport_get_ssrc(self->rtp),
         .ntp_timestamp_msw = ntp_msw,
         .ntp_timestamp_lsw = ntp_lsw,
-        .rtp_timestamp = Compy_RtpTransport_get_last_rtp_timestamp(self->rtp),
+        .rtp_timestamp = Compy_RtpTransport_get_rtp_timestamp_now(self->rtp),
         .sender_packet_count = Compy_RtpTransport_get_packet_count(self->rtp),
         .sender_octet_count = Compy_RtpTransport_get_octet_count(self->rtp),
     };

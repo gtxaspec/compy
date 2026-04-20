@@ -10,6 +10,7 @@
 
 #include <alloca.h>
 #include <arpa/inet.h>
+#include <time.h>
 #include <unistd.h>
 
 #ifdef __linux__
@@ -25,6 +26,7 @@ struct Compy_RtpTransport {
     uint32_t packet_count;
     uint32_t octet_count;
     uint32_t last_rtp_timestamp;
+    uint64_t last_send_time_us; /* CLOCK_MONOTONIC µs at last send */
 
     /* Optional one-byte header extension (RFC 8285) */
     uint8_t ext_data[12]; /* extension payload (max 12 bytes padded) */
@@ -119,6 +121,10 @@ int Compy_RtpTransport_send_packet(
         self->packet_count++;
         self->octet_count += (uint32_t)(payload_header.len + payload.len);
         self->last_rtp_timestamp = compute_timestamp(ts, self->clock_rate);
+        struct timespec mts;
+        clock_gettime(CLOCK_MONOTONIC, &mts);
+        self->last_send_time_us =
+            (uint64_t)mts.tv_sec * 1000000 + (uint64_t)mts.tv_nsec / 1000;
     }
 
     return ret;
@@ -192,4 +198,17 @@ uint32_t
 Compy_RtpTransport_get_last_rtp_timestamp(const Compy_RtpTransport *self) {
     assert(self);
     return self->last_rtp_timestamp;
+}
+
+uint32_t
+Compy_RtpTransport_get_rtp_timestamp_now(const Compy_RtpTransport *self) {
+    assert(self);
+    if (self->last_send_time_us == 0)
+        return self->last_rtp_timestamp;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    uint64_t now_us = (uint64_t)ts.tv_sec * 1000000 + (uint64_t)ts.tv_nsec / 1000;
+    uint64_t elapsed_us = now_us - self->last_send_time_us;
+    return self->last_rtp_timestamp +
+           (uint32_t)(elapsed_us * self->clock_rate / 1000000);
 }

@@ -149,3 +149,16 @@ uint32_t Compy_RtpTransport_get_octet_count(const Compy_RtpTransport *self);
  */
 uint32_t
 Compy_RtpTransport_get_last_rtp_timestamp(const Compy_RtpTransport *self);
+
+/**
+ * Returns the RTP timestamp extrapolated to the current instant.
+ *
+ * Uses the last sent RTP timestamp plus elapsed time since that send,
+ * scaled by the clock rate. This gives the RTP clock value at "now,"
+ * suitable for RTCP SR where the NTP and RTP timestamps must represent
+ * the same instant (RFC 3550 Section 6.4.1).
+ *
+ * @pre `self != NULL`
+ */
+uint32_t
+Compy_RtpTransport_get_rtp_timestamp_now(const Compy_RtpTransport *self);
