@@ -207,7 +207,8 @@ Compy_RtpTransport_get_rtp_timestamp_now(const Compy_RtpTransport *self) {
         return self->last_rtp_timestamp;
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    uint64_t now_us = (uint64_t)ts.tv_sec * 1000000 + (uint64_t)ts.tv_nsec / 1000;
+    uint64_t now_us =
+        (uint64_t)ts.tv_sec * 1000000 + (uint64_t)ts.tv_nsec / 1000;
     uint64_t elapsed_us = now_us - self->last_send_time_us;
     return self->last_rtp_timestamp +
            (uint32_t)(elapsed_us * self->clock_rate / 1000000);
