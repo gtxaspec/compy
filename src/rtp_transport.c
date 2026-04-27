@@ -42,22 +42,22 @@ Compy_RtpTransport *Compy_RtpTransport_new(
     Compy_RtpTransport *self = malloc(sizeof *self);
     assert(self);
 
-    self->seq_num = 0;
-    /* Use OS entropy for SSRC to avoid collisions (RFC 3550 §8.1) */
-    uint32_t ssrc = 0;
+    /* Use OS entropy for SSRC and initial seq (RFC 3550 §5.1) */
+    uint32_t rng[2] = {0, 0};
     bool got_random = false;
 #if defined(__linux__) && defined(SYS_getrandom)
-    if (syscall(SYS_getrandom, &ssrc, sizeof ssrc, 0) == sizeof ssrc)
+    if (syscall(SYS_getrandom, rng, sizeof rng, 0) == sizeof rng)
         got_random = true;
 #endif
     if (!got_random) {
         FILE *f = fopen("/dev/urandom", "r");
         if (f) {
-            got_random = fread(&ssrc, 1, sizeof ssrc, f) == sizeof ssrc;
+            got_random = fread(rng, 1, sizeof rng, f) == sizeof rng;
             fclose(f);
         }
     }
-    self->ssrc = got_random ? ssrc : (uint32_t)rand();
+    self->ssrc = got_random ? rng[0] : (uint32_t)rand();
+    self->seq_num = got_random ? (uint16_t)rng[1] : (uint16_t)rand();
     self->payload_ty = payload_ty;
     self->clock_rate = clock_rate;
     self->transport = t;
