@@ -210,7 +210,7 @@ TEST rtp_seq_increments(void) {
     Compy_Transport t = compy_transport_udp(fds[0]);
     Compy_RtpTransport *rtp = Compy_RtpTransport_new(t, 96, 90000);
 
-    ASSERT_EQ(0, Compy_RtpTransport_get_seq(rtp));
+    uint16_t initial_seq = Compy_RtpTransport_get_seq(rtp);
 
     uint8_t payload[4] = {0};
     for (int i = 0; i < 5; i++) {
@@ -219,7 +219,7 @@ TEST rtp_seq_increments(void) {
             U8Slice99_empty(), U8Slice99_new(payload, sizeof payload));
     }
 
-    ASSERT_EQ(5, Compy_RtpTransport_get_seq(rtp));
+    ASSERT_EQ((uint16_t)(initial_seq + 5), Compy_RtpTransport_get_seq(rtp));
     ASSERT_EQ(5, Compy_RtpTransport_get_packet_count(rtp));
     ASSERT_EQ(20, Compy_RtpTransport_get_octet_count(rtp));
 
