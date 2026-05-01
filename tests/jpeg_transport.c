@@ -309,7 +309,7 @@ TEST jpeg_single_fragment(void) {
     /* JPEG RTP header fields (RFC 2435 Section 3.1) */
     ASSERT_EQ(0, packet_jpeg_type_specific(&cap.packets[0]));
     ASSERT_EQ(0, packet_jpeg_frag_offset(&cap.packets[0]));
-    ASSERT_EQ(0, packet_jpeg_type(&cap.packets[0])); /* YUV420 */
+    ASSERT_EQ(1, packet_jpeg_type(&cap.packets[0])); /* YUV420 = type 1 */
     ASSERT_EQ(255, packet_jpeg_q(&cap.packets[0]));
     ASSERT_EQ(240, packet_jpeg_width(&cap.packets[0]));  /* 1920/8 */
     ASSERT_EQ(135, packet_jpeg_height(&cap.packets[0])); /* 1080/8 */
@@ -368,7 +368,7 @@ TEST jpeg_multi_fragment(void) {
 
     /* All packets share the same type/Q/width/height */
     for (int i = 0; i < cap.count; i++) {
-        ASSERT_EQ(0, packet_jpeg_type(&cap.packets[i]));
+        ASSERT_EQ(1, packet_jpeg_type(&cap.packets[i]));
         ASSERT_EQ(255, packet_jpeg_q(&cap.packets[i]));
         ASSERT_EQ(80, packet_jpeg_width(&cap.packets[i]));  /* 640/8 */
         ASSERT_EQ(60, packet_jpeg_height(&cap.packets[i])); /* 480/8 */
@@ -433,7 +433,7 @@ TEST jpeg_yuv422_type(void) {
     capture_recv_all(&cap, ctx.fds[1]);
 
     ASSERT_EQ(1, cap.count);
-    ASSERT_EQ(1, packet_jpeg_type(&cap.packets[0])); /* YUV422 */
+    ASSERT_EQ(0, packet_jpeg_type(&cap.packets[0])); /* YUV422 = type 0 */
 
     jpeg_teardown(&ctx);
     PASS();
@@ -462,8 +462,8 @@ TEST jpeg_with_dri(void) {
 
     ASSERT_EQ(1, cap.count);
 
-    /* Type = 0 + 64 = 64 (YUV420 with DRI) */
-    ASSERT_EQ(64, packet_jpeg_type(&cap.packets[0]));
+    /* Type = 1 + 64 = 65 (YUV420 with DRI) */
+    ASSERT_EQ(65, packet_jpeg_type(&cap.packets[0]));
 
     /* Restart marker header at byte 20, before QT header */
     uint16_t ri =

@@ -257,14 +257,15 @@ static int parse_sof0(const uint8_t *data, size_t len, JpegFrameInfo *info) {
     info->height_8 = (height > 2040) ? 0 : (uint8_t)(height / 8);
 
     if (nf >= 3) {
-        // First component (Y): sampling factors at data[7].
+        // RFC 2435 Section 4.1: type 0 = YUV 4:2:2 (Y: h=2, v=1)
+        // RFC 2435 Section 4.2: type 1 = YUV 4:2:0 (Y: h=2, v=2)
         uint8_t y_h = (data[7] >> 4) & 0x0F;
         uint8_t y_v = data[7] & 0x0F;
 
-        if (y_h == 2 && y_v == 1) {
-            info->type = 1; // YUV 4:2:2
+        if (y_h == 2 && y_v == 2) {
+            info->type = 1;
         } else {
-            info->type = 0; // YUV 4:2:0 (or default)
+            info->type = 0;
         }
     } else {
         info->type = 0;
