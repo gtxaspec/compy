@@ -55,6 +55,7 @@ set(COMPY_SOURCES
     include/compy/transport.h
     include/compy/rtp_transport.h
     include/compy/nal_transport.h
+    include/compy/jpeg_transport.h
     include/compy/droppable.h
     include/compy/controller.h
     include/compy/io_vec.h
@@ -93,6 +94,7 @@ set(COMPY_SOURCES
     src/transport/udp.c
     src/rtp_transport.c
     src/nal_transport.c
+    src/jpeg_transport.c
     src/io_vec.c
     src/controller.c
     src/context.c

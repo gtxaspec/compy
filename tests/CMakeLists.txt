@@ -36,6 +36,7 @@ add_executable(
   types/test_util.h
   nal/h264.c
   nal/h265.c
+  jpeg_transport.c
   nal.c
   util.c
   writer.c

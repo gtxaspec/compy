@@ -26,6 +26,8 @@ int main(int argc, char *argv[]) {
     COMPY_SUITE(types_sdp);
     COMPY_SUITE(types_status_code);
 
+    COMPY_SUITE(jpeg_transport);
+
     COMPY_SUITE(nal_h264);
     COMPY_SUITE(nal_h265);
     COMPY_SUITE(nal);

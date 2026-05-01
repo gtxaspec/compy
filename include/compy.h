@@ -39,6 +39,7 @@
 #include <compy/droppable.h>
 #include <compy/io_vec.h>
 #include <compy/nal.h>
+#include <compy/jpeg_transport.h>
 #include <compy/nal_transport.h>
 #include <compy/option.h>
 #include <compy/receiver.h>
