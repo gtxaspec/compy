@@ -53,8 +53,7 @@ static int parse_jpeg_frame(U8Slice99 frame, JpegFrameInfo *info);
 static void
 write_jpeg_rtp_header(uint8_t *buf, uint32_t offset, const JpegFrameInfo *info);
 static void write_qt_header(uint8_t *buf, uint8_t precision, size_t qt_len);
-static void write_restart_header(
-    uint8_t *buf, uint16_t interval, bool is_first, bool is_last);
+static void write_restart_header(uint8_t *buf, uint16_t interval);
 
 Compy_JpegTransportConfig Compy_JpegTransportConfig_default(void) {
     return (Compy_JpegTransportConfig){
@@ -146,7 +145,7 @@ int Compy_JpegTransport_send_frame(
         p += JPEG_RTP_HDR_SIZE;
 
         if (has_dri) {
-            write_restart_header(p, info.restart_interval, first, last);
+            write_restart_header(p, info.restart_interval);
             p += RST_HDR_SIZE;
         }
 
@@ -192,20 +191,14 @@ static void write_qt_header(uint8_t *buf, uint8_t precision, size_t qt_len) {
 }
 
 // See <https://datatracker.ietf.org/doc/html/rfc2435#section-3.1.7>
-static void write_restart_header(
-    uint8_t *buf, uint16_t interval, bool is_first, bool is_last) {
+// Fragments are not aligned to restart interval boundaries, so all
+// packets carry F=1, L=1, count=0x3FFF per the RFC: "the receiver
+// MUST reassemble the entire frame before decoding it."
+static void write_restart_header(uint8_t *buf, uint16_t interval) {
     buf[0] = (uint8_t)(interval >> 8);
     buf[1] = (uint8_t)(interval & 0xFF);
-    // F=first, L=last, restart count=0x3FFF (unknown, per RFC 2435)
-    uint16_t fl_count = 0x3FFF;
-    if (is_first) {
-        fl_count |= 0x8000;
-    }
-    if (is_last) {
-        fl_count |= 0x4000;
-    }
-    buf[2] = (uint8_t)(fl_count >> 8);
-    buf[3] = (uint8_t)(fl_count & 0xFF);
+    buf[2] = 0xFF;
+    buf[3] = 0xFF;
 }
 
 static int parse_dqt(const uint8_t *data, size_t len, JpegFrameInfo *info) {
