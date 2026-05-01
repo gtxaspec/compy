@@ -36,6 +36,7 @@ A small, portable [RTSP 1.0] server library in C99, designed for embedded IP cam
  - RTP payload formats:
    - [x] H.264 ([RFC 6184]) — single NAL and FU-A fragmentation
    - [x] H.265 ([RFC 7798]) — single NAL and FU fragmentation
+   - [x] JPEG ([RFC 2435]) — JFIF parsing, MTU fragmentation, custom Q tables
  - ONVIF:
    - [x] Backchannel audio (two-way audio) per [ONVIF Streaming Spec] Section 5.3
    - [x] `Require` header tag handling with `551 Option not supported`
@@ -53,6 +54,7 @@ A small, portable [RTSP 1.0] server library in C99, designed for embedded IP cam
 [RFC 3550]: https://datatracker.ietf.org/doc/html/rfc3550
 [RFC 3711]: https://datatracker.ietf.org/doc/html/rfc3711
 [RFC 4566]: https://datatracker.ietf.org/doc/html/rfc4566
+[RFC 2435]: https://datatracker.ietf.org/doc/html/rfc2435
 [RFC 6184]: https://datatracker.ietf.org/doc/html/rfc6184
 [RFC 7798]: https://datatracker.ietf.org/doc/html/rfc7798
 [ONVIF Streaming Spec]: https://www.onvif.org/specs/stream/ONVIF-Streaming-Spec.pdf
@@ -183,7 +185,7 @@ cmake -B build && cmake --build build
 ./build/tests
 ```
 
-134 tests, 1241 assertions, under Address Sanitizer.
+130 tests, 1269 assertions, under Address Sanitizer.
 
 To build with TLS/SRTP tests:
 
@@ -201,6 +203,8 @@ Send path (camera → client):
     |
     v
   NalTransport ------- H.264/H.265 NAL fragmentation (FU-A/FU)
+    |                    or
+  JpegTransport ------ JPEG/MJPEG RFC 2435 packetization
     |
     v
   RtpTransport ------- RTP header, seq/timestamp, stats
