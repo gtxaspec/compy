@@ -113,7 +113,9 @@ int Compy_JpegTransport_send_frame(
         return -1;
     }
 
-    if (info.scan_len == 0) {
+    // RFC 2435 fragment offset is 24-bit; scan data beyond 16MB cannot
+    // be addressed.
+    if (info.scan_len == 0 || info.scan_len > 0xFFFFFF) {
         return -1;
     }
 
