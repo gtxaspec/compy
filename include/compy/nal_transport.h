@@ -26,8 +26,14 @@
 
 /**
  * The default value for #Compy_NalTransportConfig.max_h265_nalu_size.
+ *
+ * Kept under a 1500-byte Ethernet MTU (payload + RTP/UDP/IP headers)
+ * like the H.264 default: a larger value makes every UDP packet
+ * IP-fragment, so losing any one fragment loses the whole packet and
+ * some paths drop fragments outright. FU fragmentation exists exactly
+ * so this can stay MTU-sized on both codecs.
  */
-#define COMPY_MAX_H265_NALU_SIZE 4096
+#define COMPY_MAX_H265_NALU_SIZE 1200
 
 /**
  * The configuration structure for #Compy_NalTransport.
