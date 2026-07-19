@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <unistd.h>
 #ifdef __linux__
@@ -20,22 +21,57 @@
 
 /* --- Digest auth --- */
 
-#define NONCE_LEN 32
-#define MAX_REALM 128
+#define NONCE_LEN        41 /* 8 hex timestamp + '-' + 32 hex digest */
+#define NONCE_WINDOW_SEC 300
+#define MAX_REALM        128
 
 struct Compy_Auth {
     char realm[MAX_REALM];
-    char nonce[NONCE_LEN + 1];
+    uint8_t secret[16];
     Compy_CredentialLookup lookup;
     void *user_data;
 };
 
-static int generate_nonce(char out[NONCE_LEN + 1]) {
-    uint8_t raw[NONCE_LEN / 2];
+/*
+ * Nonces are stateless: hex(now) '-' MD5(secret:hex(now)). Validation
+ * recomputes the digest and checks freshness, so nothing mutates on
+ * either the challenge or the verify path. A single mutable
+ * last-issued nonce (the previous design) livelocks under concurrent
+ * handshakes: every challenge for client B invalidates the nonce
+ * client A is about to answer with.
+ */
+static void
+make_nonce(const Compy_Auth *self, uint32_t ts, char out[NONCE_LEN + 1]) {
+    char tshex[9];
+    snprintf(tshex, sizeof tshex, "%08x", ts);
+    uint8_t buf[sizeof self->secret + 1 + 8];
+    memcpy(buf, self->secret, sizeof self->secret);
+    buf[sizeof self->secret] = ':';
+    memcpy(buf + sizeof self->secret + 1, tshex, 8);
+    char digest[33];
+    compy_md5_hex(buf, sizeof buf, digest);
+    snprintf(out, NONCE_LEN + 1, "%s-%s", tshex, digest);
+}
+
+static bool nonce_valid(const Compy_Auth *self, const char *nonce) {
+    if (strlen(nonce) != NONCE_LEN || nonce[8] != '-') {
+        return false;
+    }
+    uint32_t ts = (uint32_t)strtoul(nonce, NULL, 16);
+    uint32_t now = (uint32_t)time(NULL);
+    if (now - ts > NONCE_WINDOW_SEC && ts - now > 2) {
+        return false;
+    }
+    char expect[NONCE_LEN + 1];
+    make_nonce(self, ts, expect);
+    return strcmp(nonce, expect) == 0;
+}
+
+static int generate_secret(uint8_t *raw, size_t raw_len) {
 
 #if defined(__linux__) && defined(SYS_getrandom)
-    if (syscall(SYS_getrandom, raw, sizeof raw, 0) == (long)sizeof raw) {
-        goto format;
+    if (syscall(SYS_getrandom, raw, raw_len, 0) == (long)raw_len) {
+        return 0;
     }
 #endif
 
@@ -43,19 +79,11 @@ static int generate_nonce(char out[NONCE_LEN + 1]) {
     if (!f) {
         return -1;
     }
-    size_t n = fread(raw, 1, sizeof raw, f);
+    size_t n = fread(raw, 1, raw_len, f);
     fclose(f);
-    if (n != sizeof raw) {
+    if (n != raw_len) {
         return -1;
     }
-
-#if defined(__linux__) && defined(SYS_getrandom)
-format:
-#endif
-    for (size_t i = 0; i < sizeof raw; i++) {
-        sprintf(out + i * 2, "%02x", raw[i]);
-    }
-    out[NONCE_LEN] = '\0';
     return 0;
 }
 
@@ -79,7 +107,7 @@ Compy_Auth *Compy_Auth_new(
     self->lookup = lookup;
     self->user_data = user_data;
 
-    if (generate_nonce(self->nonce) != 0) {
+    if (generate_secret(self->secret, sizeof self->secret) != 0) {
         free(self);
         return NULL;
     }
@@ -231,8 +259,8 @@ int compy_auth_check(
         goto challenge;
     }
 
-    /* Verify nonce matches */
-    if (strcmp(nonce, self->nonce) != 0) {
+    /* Verify the nonce is ours and fresh */
+    if (!nonce_valid(self, nonce)) {
         goto challenge;
     }
 
@@ -271,12 +299,14 @@ int compy_auth_check(
 
     return 0;
 
-challenge:
-    /* Fresh nonce on every challenge to prevent replay attacks */
-    generate_nonce(self->nonce);
+challenge:;
+    /* Time-based nonce: fresh every second, valid for the window,
+     * shared safely by any number of concurrent handshakes */
+    char fresh[NONCE_LEN + 1];
+    make_nonce(self, (uint32_t)time(NULL), fresh);
     compy_header(
         ctx, COMPY_HEADER_WWW_AUTHENTICATE, "Digest realm=\"%s\", nonce=\"%s\"",
-        self->realm, self->nonce);
+        self->realm, fresh);
     compy_respond(ctx, COMPY_STATUS_UNAUTHORIZED, "Unauthorized");
     return -1;
 }
