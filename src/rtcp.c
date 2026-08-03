@@ -17,6 +17,9 @@ struct Compy_Rtcp {
     bool has_rr;
 };
 
+static void ntp_anchor_ref(void);
+static void ntp_anchor_unref(void);
+
 Compy_Rtcp *Compy_Rtcp_new(
     Compy_RtpTransport *rtp, Compy_Transport rtcp_transport,
     const char *cname) {
@@ -34,6 +37,8 @@ Compy_Rtcp *Compy_Rtcp_new(
     memset(&self->last_rr, 0, sizeof(self->last_rr));
     self->has_rr = false;
 
+    ntp_anchor_ref();
+
     return self;
 }
 
@@ -43,6 +48,7 @@ static void Compy_Rtcp_drop(VSelf) {
 
     VCALL_SUPER(self->rtcp_transport, Compy_Droppable, drop);
     free(self);
+    ntp_anchor_unref();
 }
 
 implExtern(Compy_Droppable, Compy_Rtcp);
@@ -54,10 +60,12 @@ implExtern(Compy_Droppable, Compy_Rtcp);
  * NTP epoch. Using CLOCK_REALTIME directly would drift relative to the
  * RTP clock, causing clients to recalibrate PTS on each SR.
  */
+static pthread_mutex_t g_ntp_lock = PTHREAD_MUTEX_INITIALIZER;
+static bool g_ntp_armed;
 static int64_t g_mono_to_rt_ns;
-static pthread_once_t g_ntp_once = PTHREAD_ONCE_INIT;
+static int g_rtcp_instances; /* guarded by g_ntp_lock */
 
-static void ntp_init_once(void) {
+static void ntp_anchor_arm_locked(void) {
     struct timespec rt, mt;
     clock_gettime(CLOCK_REALTIME, &rt);
     clock_gettime(CLOCK_MONOTONIC, &mt);
@@ -74,19 +82,45 @@ static void ntp_init_once(void) {
     int64_t rt_ns = (int64_t)rt.tv_sec * 1000000000LL + rt.tv_nsec;
     int64_t mt_ns = (int64_t)mt.tv_sec * 1000000000LL + mt.tv_nsec;
     g_mono_to_rt_ns = rt_ns - mt_ns;
+    g_ntp_armed = true;
 }
 
 static void get_ntp_timestamp(uint32_t *msw, uint32_t *lsw) {
-    pthread_once(&g_ntp_once, ntp_init_once);
+    pthread_mutex_lock(&g_ntp_lock);
+    if (!g_ntp_armed)
+        ntp_anchor_arm_locked();
+    int64_t offset_ns = g_mono_to_rt_ns;
+    pthread_mutex_unlock(&g_ntp_lock);
 
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
 
-    int64_t now_ns =
-        (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec + g_mono_to_rt_ns;
+    int64_t now_ns = (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec + offset_ns;
 
     *msw = (uint32_t)(now_ns / 1000000000LL + (int64_t)NTP_EPOCH_OFFSET);
     *lsw = (uint32_t)(((uint64_t)(now_ns % 1000000000LL) << 32) / 1000000000ULL);
+}
+
+/*
+ * The anchor holds for as long as any RTCP instance exists, so no
+ * receiver ever sees the NTP-RTP relationship recalibrate mid-session.
+ * When the last instance drops it is disarmed, and the next session
+ * anchors afresh. That closes the boot-order gap: on cameras that
+ * stream to an auto-reconnecting client before NTP first syncs, the
+ * anchor used to freeze the boot clock for the daemon's lifetime; now
+ * one reconnect after sync is enough to carry correct wallclock.
+ */
+static void ntp_anchor_ref(void) {
+    pthread_mutex_lock(&g_ntp_lock);
+    g_rtcp_instances++;
+    pthread_mutex_unlock(&g_ntp_lock);
+}
+
+static void ntp_anchor_unref(void) {
+    pthread_mutex_lock(&g_ntp_lock);
+    if (--g_rtcp_instances == 0)
+        g_ntp_armed = false;
+    pthread_mutex_unlock(&g_ntp_lock);
 }
 
 int Compy_Rtcp_send_sr(Compy_Rtcp *self) {
