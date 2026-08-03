@@ -54,14 +54,26 @@ implExtern(Compy_Droppable, Compy_Rtcp);
  * NTP epoch. Using CLOCK_REALTIME directly would drift relative to the
  * RTP clock, causing clients to recalibrate PTS on each SR.
  */
-static int64_t g_mono_to_ntp_sec;
+static int64_t g_mono_to_rt_ns;
 static pthread_once_t g_ntp_once = PTHREAD_ONCE_INIT;
 
 static void ntp_init_once(void) {
     struct timespec rt, mt;
     clock_gettime(CLOCK_REALTIME, &rt);
     clock_gettime(CLOCK_MONOTONIC, &mt);
-    g_mono_to_ntp_sec = (int64_t)(rt.tv_sec - mt.tv_sec) + NTP_EPOCH_OFFSET;
+    /*
+     * Full-precision offset. Computing it from tv_sec alone discarded
+     * both fractional parts, biasing every SR NTP timestamp by the
+     * fraction of the boot-time realtime/monotonic offset -- a constant
+     * anywhere in (-1s, +1s), identical across daemon restarts, only
+     * changing on reboot. Invisible to receivers (both tracks share
+     * it, so A/V stays aligned) until something maps SR NTP against a
+     * real wall clock, which is how a latency measurement read
+     * -519 ms on a camera whose clock was 0.6 ms off.
+     */
+    int64_t rt_ns = (int64_t)rt.tv_sec * 1000000000LL + rt.tv_nsec;
+    int64_t mt_ns = (int64_t)mt.tv_sec * 1000000000LL + mt.tv_nsec;
+    g_mono_to_rt_ns = rt_ns - mt_ns;
 }
 
 static void get_ntp_timestamp(uint32_t *msw, uint32_t *lsw) {
@@ -70,8 +82,11 @@ static void get_ntp_timestamp(uint32_t *msw, uint32_t *lsw) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
 
-    *msw = (uint32_t)(ts.tv_sec + g_mono_to_ntp_sec);
-    *lsw = (uint32_t)(((uint64_t)ts.tv_nsec << 32) / 1000000000ULL);
+    int64_t now_ns =
+        (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec + g_mono_to_rt_ns;
+
+    *msw = (uint32_t)(now_ns / 1000000000LL + (int64_t)NTP_EPOCH_OFFSET);
+    *lsw = (uint32_t)(((uint64_t)(now_ns % 1000000000LL) << 32) / 1000000000ULL);
 }
 
 int Compy_Rtcp_send_sr(Compy_Rtcp *self) {
