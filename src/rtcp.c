@@ -98,7 +98,8 @@ static void get_ntp_timestamp(uint32_t *msw, uint32_t *lsw) {
     int64_t now_ns = (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec + offset_ns;
 
     *msw = (uint32_t)(now_ns / 1000000000LL + (int64_t)NTP_EPOCH_OFFSET);
-    *lsw = (uint32_t)(((uint64_t)(now_ns % 1000000000LL) << 32) / 1000000000ULL);
+    *lsw =
+        (uint32_t)(((uint64_t)(now_ns % 1000000000LL) << 32) / 1000000000ULL);
 }
 
 /*
