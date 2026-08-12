@@ -151,12 +151,43 @@ uint32_t
 Compy_RtpTransport_get_last_rtp_timestamp(const Compy_RtpTransport *self);
 
 /**
+ * Supplies a media-clock reference for RTCP Sender Reports.
+ *
+ * Associates an RTP timestamp with the CLOCK_MONOTONIC sampling instant that
+ * produced it. Applications which send Raw RTP timestamps should update this
+ * after sending a media sample. This lets RTCP project the actual media clock
+ * to the report instant instead of treating network send scheduling as the
+ * sampling clock.
+ *
+ * @param[out] self The RTP transport.
+ * @param[in] rtp_timestamp RTP timestamp of the media sample.
+ * @param[in] monotonic_time_us Sampling instant in CLOCK_MONOTONIC microseconds.
+ *
+ * @pre `self != NULL`
+ */
+void Compy_RtpTransport_set_clock_reference(
+    Compy_RtpTransport *self, uint32_t rtp_timestamp,
+    uint64_t monotonic_time_us);
+
+/**
+ * Projects the RTP media clock to a CLOCK_MONOTONIC instant.
+ *
+ * Primarily exposed for deterministic clock-mapping tests. Applications
+ * normally use #Compy_RtpTransport_get_rtp_timestamp_now.
+ *
+ * @pre `self != NULL`
+ */
+uint32_t Compy_RtpTransport_get_rtp_timestamp_at(
+    const Compy_RtpTransport *self, uint64_t monotonic_time_us);
+
+/**
  * Returns the RTP timestamp extrapolated to the current instant.
  *
- * Uses the last sent RTP timestamp plus elapsed time since that send,
- * scaled by the clock rate. This gives the RTP clock value at "now,"
- * suitable for RTCP SR where the NTP and RTP timestamps must represent
- * the same instant (RFC 3550 Section 6.4.1).
+ * Uses the latest media clock reference when available, scaled by the RTP
+ * clock rate. This gives the RTP clock value at "now," suitable for RTCP SR
+ * where the NTP and RTP timestamps must represent the same instant (RFC 3550
+ * Section 6.4.1). Falls back to the last packet's send time for callers that
+ * have not supplied a media clock reference.
  *
  * @pre `self != NULL`
  */

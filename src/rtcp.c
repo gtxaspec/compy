@@ -85,17 +85,16 @@ static void ntp_anchor_arm_locked(void) {
     g_ntp_armed = true;
 }
 
-static void get_ntp_timestamp(uint32_t *msw, uint32_t *lsw) {
+static void get_ntp_timestamp_at(
+    const struct timespec *monotonic_time, uint32_t *msw, uint32_t *lsw) {
     pthread_mutex_lock(&g_ntp_lock);
     if (!g_ntp_armed)
         ntp_anchor_arm_locked();
     int64_t offset_ns = g_mono_to_rt_ns;
     pthread_mutex_unlock(&g_ntp_lock);
 
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-
-    int64_t now_ns = (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec + offset_ns;
+    int64_t now_ns = (int64_t)monotonic_time->tv_sec * 1000000000LL +
+                     monotonic_time->tv_nsec + offset_ns;
 
     *msw = (uint32_t)(now_ns / 1000000000LL + (int64_t)NTP_EPOCH_OFFSET);
     *lsw =
@@ -127,14 +126,22 @@ static void ntp_anchor_unref(void) {
 int Compy_Rtcp_send_sr(Compy_Rtcp *self) {
     assert(self);
 
+    /* Sample the report instant once. The NTP and RTP fields must describe
+     * this same instant (RFC 3550 Section 6.4.1). */
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    const uint64_t now_us =
+        (uint64_t)now.tv_sec * 1000000 + (uint64_t)now.tv_nsec / 1000;
+
     uint32_t ntp_msw, ntp_lsw;
-    get_ntp_timestamp(&ntp_msw, &ntp_lsw);
+    get_ntp_timestamp_at(&now, &ntp_msw, &ntp_lsw);
 
     const Compy_RtcpSenderInfo info = {
         .ssrc = Compy_RtpTransport_get_ssrc(self->rtp),
         .ntp_timestamp_msw = ntp_msw,
         .ntp_timestamp_lsw = ntp_lsw,
-        .rtp_timestamp = Compy_RtpTransport_get_rtp_timestamp_now(self->rtp),
+        .rtp_timestamp =
+            Compy_RtpTransport_get_rtp_timestamp_at(self->rtp, now_us),
         .sender_packet_count = Compy_RtpTransport_get_packet_count(self->rtp),
         .sender_octet_count = Compy_RtpTransport_get_octet_count(self->rtp),
     };
