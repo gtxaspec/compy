@@ -200,6 +200,58 @@ TEST rtp_clock_reference_projects_media_clock(void) {
     PASS();
 }
 
+TEST rtp_sysclock_send_sets_clock_reference(void) {
+    int fds[2];
+    ASSERT(socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds) == 0);
+
+    Compy_Transport t = compy_transport_udp(fds[0]);
+    Compy_RtpTransport *rtp = Compy_RtpTransport_new(t, 96, 90000);
+
+    /* A SysClockUs send carries its own sampling instant, so the media
+     * clock reference must arm implicitly: projecting one second past
+     * the send instant lands one second of RTP clock past the stamped
+     * timestamp (90 ticks/ms at 90kHz). */
+    const uint64_t sent_at_us = 20000000;
+    uint8_t payload[10] = {0};
+    int ret __attribute__((unused)) = Compy_RtpTransport_send_packet(
+        rtp, Compy_RtpTimestamp_SysClockUs(sent_at_us), false,
+        U8Slice99_empty(), U8Slice99_new(payload, sizeof payload));
+
+    const uint32_t stamped = Compy_RtpTransport_get_last_rtp_timestamp(rtp);
+    ASSERT_EQ(
+        stamped + 90000,
+        Compy_RtpTransport_get_rtp_timestamp_at(rtp, sent_at_us + 1000000));
+
+    VCALL(DYN(Compy_RtpTransport, Compy_Droppable, rtp), drop);
+    close(fds[1]);
+    PASS();
+}
+
+TEST rtp_raw_send_without_reference_keeps_send_anchor(void) {
+    int fds[2];
+    ASSERT(socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds) == 0);
+
+    Compy_Transport t = compy_transport_udp(fds[0]);
+    Compy_RtpTransport *rtp = Compy_RtpTransport_new(t, 96, 90000);
+
+    /* Raw senders that never supply a reference keep the historical
+     * send-time anchor: the projection must still move with real time
+     * from the last send, never return a frozen timestamp. */
+    uint8_t payload[10] = {0};
+    int ret __attribute__((unused)) = Compy_RtpTransport_send_packet(
+        rtp, Compy_RtpTimestamp_Raw(5000), false, U8Slice99_empty(),
+        U8Slice99_new(payload, sizeof payload));
+
+    const uint32_t now_proj = Compy_RtpTransport_get_rtp_timestamp_now(rtp);
+    const int32_t advance = (int32_t)(now_proj - 5000);
+    ASSERT(advance >= 0);
+    ASSERT(advance < 90000); /* within a second of the send */
+
+    VCALL(DYN(Compy_RtpTransport, Compy_Droppable, rtp), drop);
+    close(fds[1]);
+    PASS();
+}
+
 TEST rtp_ssrc_nonzero_entropy(void) {
     /* Verify SSRC uses OS entropy (not zero from unseeded rand) */
     int fds[2];
@@ -358,6 +410,8 @@ SUITE(rtcp) {
     RUN_TEST(rtcp_handle_rr);
     RUN_TEST(rtp_stats_tracking);
     RUN_TEST(rtp_clock_reference_projects_media_clock);
+    RUN_TEST(rtp_sysclock_send_sets_clock_reference);
+    RUN_TEST(rtp_raw_send_without_reference_keeps_send_anchor);
     RUN_TEST(rtp_ssrc_nonzero_entropy);
     RUN_TEST(rtp_seq_increments);
     RUN_TEST(rtcp_sr_reflects_rtp_stats);

@@ -159,6 +159,11 @@ Compy_RtpTransport_get_last_rtp_timestamp(const Compy_RtpTransport *self);
  * to the report instant instead of treating network send scheduling as the
  * sampling clock.
  *
+ * Like every transport operation, callers must serialize this against the
+ * send and RTCP paths: the reference is multiple fields and a torn update
+ * projects a wildly wrong report (a half-written 64-bit instant is off by
+ * whole seconds on 32-bit targets).
+ *
  * @param[out] self The RTP transport.
  * @param[in] rtp_timestamp RTP timestamp of the media sample.
  * @param[in] monotonic_time_us Sampling instant in CLOCK_MONOTONIC microseconds.
