@@ -177,6 +177,29 @@ TEST rtp_stats_tracking(void) {
     PASS();
 }
 
+TEST rtp_clock_reference_projects_media_clock(void) {
+    int fds[2];
+    ASSERT(socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds) == 0);
+
+    Compy_Transport t = compy_transport_udp(fds[0]);
+    Compy_RtpTransport *rtp = Compy_RtpTransport_new(t, 97, 48000);
+
+    const uint32_t base_rtp = 0x12345678;
+    const uint64_t base_us = 10000000;
+    Compy_RtpTransport_set_clock_reference(rtp, base_rtp, base_us);
+
+    ASSERT_EQ(
+        base_rtp + 240000,
+        Compy_RtpTransport_get_rtp_timestamp_at(rtp, base_us + 5000000));
+    ASSERT_EQ(
+        base_rtp - 48000,
+        Compy_RtpTransport_get_rtp_timestamp_at(rtp, base_us - 1000000));
+
+    VCALL(DYN(Compy_RtpTransport, Compy_Droppable, rtp), drop);
+    close(fds[1]);
+    PASS();
+}
+
 TEST rtp_ssrc_nonzero_entropy(void) {
     /* Verify SSRC uses OS entropy (not zero from unseeded rand) */
     int fds[2];
@@ -334,6 +357,7 @@ SUITE(rtcp) {
     RUN_TEST(rtcp_send_bye);
     RUN_TEST(rtcp_handle_rr);
     RUN_TEST(rtp_stats_tracking);
+    RUN_TEST(rtp_clock_reference_projects_media_clock);
     RUN_TEST(rtp_ssrc_nonzero_entropy);
     RUN_TEST(rtp_seq_increments);
     RUN_TEST(rtcp_sr_reflects_rtp_stats);

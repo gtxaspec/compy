@@ -27,6 +27,9 @@ struct Compy_RtpTransport {
     uint32_t octet_count;
     uint32_t last_rtp_timestamp;
     uint64_t last_send_time_us; /* CLOCK_MONOTONIC µs at last send */
+    uint32_t clock_ref_rtp_timestamp;
+    uint64_t clock_ref_time_us; /* Media sampling time, CLOCK_MONOTONIC µs */
+    bool has_clock_ref;
 
     /* Optional one-byte header extension (RFC 8285) */
     uint8_t ext_data[12]; /* extension payload (max 12 bytes padded) */
@@ -64,6 +67,10 @@ Compy_RtpTransport *Compy_RtpTransport_new(
     self->packet_count = 0;
     self->octet_count = 0;
     self->last_rtp_timestamp = 0;
+    self->last_send_time_us = 0;
+    self->clock_ref_rtp_timestamp = 0;
+    self->clock_ref_time_us = 0;
+    self->has_clock_ref = false;
     self->ext_len = 0;
     memset(self->ext_data, 0, sizeof(self->ext_data));
 
@@ -125,6 +132,21 @@ int Compy_RtpTransport_send_packet(
         clock_gettime(CLOCK_MONOTONIC, &mts);
         self->last_send_time_us =
             (uint64_t)mts.tv_sec * 1000000 + (uint64_t)mts.tv_nsec / 1000;
+
+        /* SysClockUs already carries the sampling instant. Raw timestamps do
+         * not, so applications using an external media clock can provide the
+         * corresponding instant with Compy_RtpTransport_set_clock_reference.
+         */
+        match(ts) {
+            of(Compy_RtpTimestamp_Raw, raw_ts) {
+                (void)raw_ts;
+            }
+            of(Compy_RtpTimestamp_SysClockUs, time_us) {
+                self->clock_ref_rtp_timestamp = self->last_rtp_timestamp;
+                self->clock_ref_time_us = *time_us;
+                self->has_clock_ref = true;
+            }
+        }
     }
 
     return ret;
@@ -200,16 +222,48 @@ Compy_RtpTransport_get_last_rtp_timestamp(const Compy_RtpTransport *self) {
     return self->last_rtp_timestamp;
 }
 
+void Compy_RtpTransport_set_clock_reference(
+    Compy_RtpTransport *self, uint32_t rtp_timestamp,
+    uint64_t monotonic_time_us) {
+    assert(self);
+    self->clock_ref_rtp_timestamp = rtp_timestamp;
+    self->clock_ref_time_us = monotonic_time_us;
+    self->has_clock_ref = true;
+}
+
+uint32_t Compy_RtpTransport_get_rtp_timestamp_at(
+    const Compy_RtpTransport *self, uint64_t monotonic_time_us) {
+    assert(self);
+
+    uint32_t reference_rtp;
+    uint64_t reference_us;
+    if (self->has_clock_ref) {
+        reference_rtp = self->clock_ref_rtp_timestamp;
+        reference_us = self->clock_ref_time_us;
+    } else if (self->last_send_time_us != 0) {
+        /* Compatibility fallback for Raw callers that have not supplied the
+         * media sampling clock. This retains the historical behavior, but a
+         * send-time anchor can jitter when packet delivery is scheduled at a
+         * different phase from the media clock. */
+        reference_rtp = self->last_rtp_timestamp;
+        reference_us = self->last_send_time_us;
+    } else {
+        return self->last_rtp_timestamp;
+    }
+
+    const int64_t elapsed_us =
+        (int64_t)monotonic_time_us - (int64_t)reference_us;
+    const int64_t elapsed_ticks =
+        elapsed_us * (int64_t)self->clock_rate / 1000000;
+    return reference_rtp + (uint32_t)elapsed_ticks;
+}
+
 uint32_t
 Compy_RtpTransport_get_rtp_timestamp_now(const Compy_RtpTransport *self) {
     assert(self);
-    if (self->last_send_time_us == 0)
-        return self->last_rtp_timestamp;
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    uint64_t now_us =
+    const uint64_t now_us =
         (uint64_t)ts.tv_sec * 1000000 + (uint64_t)ts.tv_nsec / 1000;
-    uint64_t elapsed_us = now_us - self->last_send_time_us;
-    return self->last_rtp_timestamp +
-           (uint32_t)(elapsed_us * self->clock_rate / 1000000);
+    return Compy_RtpTransport_get_rtp_timestamp_at(self, now_us);
 }
