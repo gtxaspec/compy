@@ -166,7 +166,8 @@ Compy_RtpTransport_get_last_rtp_timestamp(const Compy_RtpTransport *self);
  *
  * @param[out] self The RTP transport.
  * @param[in] rtp_timestamp RTP timestamp of the media sample.
- * @param[in] monotonic_time_us Sampling instant in CLOCK_MONOTONIC microseconds.
+ * @param[in] monotonic_time_us Sampling instant in CLOCK_MONOTONIC
+ * microseconds.
  *
  * @pre `self != NULL`
  */
