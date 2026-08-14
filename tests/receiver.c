@@ -211,6 +211,163 @@ TEST backchannel_lifecycle(void) {
     PASS();
 }
 
+static void build_rtp_packet_seq(
+    uint8_t *buf, size_t *len, uint16_t seq, uint32_t ts, uint32_t ssrc) {
+    Compy_RtpHeader hdr = {
+        .version = 2,
+        .payload_ty = 0,
+        .sequence_number = htons(seq),
+        .timestamp = htonl(ts),
+        .ssrc = htonl(ssrc),
+    };
+    const size_t hdr_size = Compy_RtpHeader_size(hdr);
+    uint8_t *ret_buf __attribute__((unused)) =
+        Compy_RtpHeader_serialize(hdr, buf);
+    buf[hdr_size] = 0xFF;
+    *len = hdr_size + 1;
+}
+
+TEST receiver_rr_empty_without_traffic(void) {
+    Compy_AudioReceiver no_audio = {.self = NULL, .vptr = NULL};
+    Compy_RtpReceiver *recv = Compy_RtpReceiver_new(NULL, no_audio);
+
+    uint8_t rr[64];
+    ASSERT_EQ(
+        0, Compy_RtpReceiver_write_rr(recv, 1, 1000, NULL, rr, sizeof rr));
+
+    VCALL(DYN(Compy_RtpReceiver, Compy_Droppable, recv), drop);
+    PASS();
+}
+
+TEST receiver_rr_reports_loss(void) {
+    Compy_AudioReceiver no_audio = {.self = NULL, .vptr = NULL};
+    Compy_RtpReceiver *recv = Compy_RtpReceiver_new(NULL, no_audio);
+
+    uint8_t pkt[64];
+    size_t len;
+    const uint16_t seqs[] = {1, 2, 4, 5}; /* 3 lost */
+    for (size_t i = 0; i < 4; i++) {
+        build_rtp_packet_seq(pkt, &len, seqs[i], 160 * seqs[i], 0xC0FFEE);
+        ASSERT_EQ(0, Compy_RtpReceiver_feed(recv, COMPY_CHANNEL_RTP, pkt, len));
+    }
+
+    uint8_t rr[64];
+    ssize_t n =
+        Compy_RtpReceiver_write_rr(recv, 0x1234, 0, NULL, rr, sizeof rr);
+    ASSERT_EQ(32, (int)n);
+    ASSERT_EQ(0x81, rr[0]); /* V=2, RC=1 */
+    ASSERT_EQ(201, rr[1]);  /* RR */
+    ASSERT_EQ(7, rr[3]);    /* length in words - 1 */
+
+    uint32_t reporter, source, loss_word, ext_max, lsr, dlsr;
+    memcpy(&reporter, rr + 4, 4);
+    memcpy(&source, rr + 8, 4);
+    memcpy(&loss_word, rr + 12, 4);
+    memcpy(&ext_max, rr + 16, 4);
+    memcpy(&lsr, rr + 24, 4);
+    memcpy(&dlsr, rr + 28, 4);
+    ASSERT_EQ(0x1234, ntohl(reporter));
+    ASSERT_EQ(0xC0FFEE, ntohl(source));
+    ASSERT_EQ(1, ntohl(loss_word) & 0xFFFFFF);         /* cumulative lost */
+    ASSERT_EQ(256 / 5, (int)(ntohl(loss_word) >> 24)); /* 1 of 5 expected */
+    ASSERT_EQ(5, ntohl(ext_max));
+    ASSERT_EQ(0, ntohl(lsr)); /* no SR seen */
+    ASSERT_EQ(0, ntohl(dlsr));
+
+    VCALL(DYN(Compy_RtpReceiver, Compy_Droppable, recv), drop);
+    PASS();
+}
+
+TEST receiver_rr_lsr_dlsr_from_snooped_sr(void) {
+    Compy_AudioReceiver no_audio = {.self = NULL, .vptr = NULL};
+    Compy_RtpReceiver *recv = Compy_RtpReceiver_new(NULL, no_audio);
+
+    uint8_t pkt[64];
+    size_t len;
+    build_rtp_packet_seq(pkt, &len, 7, 700, 0xC0FFEE);
+    ASSERT_EQ(
+        0,
+        Compy_RtpReceiver_feed_at(recv, COMPY_CHANNEL_RTP, pkt, len, 1000000));
+
+    /* Minimal SR: header + ssrc + NTP + RTP ts + counts (28 bytes). */
+    uint8_t sr[28] = {0x80, 200, 0, 6};
+    const uint8_t ntp[] = {0xAA, 0xBB, 0xCC, 0xDD, 0x11, 0x22, 0x33, 0x44};
+    memcpy(sr + 8, ntp, 8);
+    ASSERT_EQ(
+        0, Compy_RtpReceiver_feed_at(
+               recv, COMPY_CHANNEL_RTCP, sr, sizeof sr, 2000000));
+
+    uint8_t rr[64];
+    /* One second after the SR arrived. */
+    ssize_t n =
+        Compy_RtpReceiver_write_rr(recv, 1, 3000000, NULL, rr, sizeof rr);
+    ASSERT_EQ(32, (int)n);
+    uint32_t lsr, dlsr;
+    memcpy(&lsr, rr + 24, 4);
+    memcpy(&dlsr, rr + 28, 4);
+    ASSERT_EQ(0xCCDD1122, ntohl(lsr)); /* middle 32 of the NTP stamp */
+    ASSERT_EQ(65536, ntohl(dlsr));     /* 1 s in 1/65536 units */
+
+    VCALL(DYN(Compy_RtpReceiver, Compy_Droppable, recv), drop);
+    PASS();
+}
+
+TEST receiver_rr_jitter_zero_on_perfect_cadence(void) {
+    Compy_AudioReceiver no_audio = {.self = NULL, .vptr = NULL};
+    Compy_RtpReceiver *recv = Compy_RtpReceiver_new(NULL, no_audio);
+    Compy_RtpReceiver_set_clock_rate(recv, 8000);
+
+    uint8_t pkt[64];
+    size_t len;
+    for (uint16_t i = 1; i <= 20; i++) {
+        build_rtp_packet_seq(pkt, &len, i, 160u * i, 0xC0FFEE);
+        /* Arrival marches in exact 20 ms steps: transit is constant. */
+        ASSERT_EQ(
+            0, Compy_RtpReceiver_feed_at(
+                   recv, COMPY_CHANNEL_RTP, pkt, len,
+                   1000000 + 20000 * (int64_t)i));
+    }
+
+    uint8_t rr[64];
+    ASSERT_EQ(
+        32,
+        (int)Compy_RtpReceiver_write_rr(recv, 1, 2000000, NULL, rr, sizeof rr));
+    uint32_t jitter;
+    memcpy(&jitter, rr + 20, 4);
+    ASSERT_EQ(0, ntohl(jitter));
+
+    VCALL(DYN(Compy_RtpReceiver, Compy_Droppable, recv), drop);
+    PASS();
+}
+
+TEST receiver_rr_compound_with_cname(void) {
+    Compy_AudioReceiver no_audio = {.self = NULL, .vptr = NULL};
+    Compy_RtpReceiver *recv = Compy_RtpReceiver_new(NULL, no_audio);
+
+    uint8_t pkt[64];
+    size_t len;
+    build_rtp_packet_seq(pkt, &len, 1, 160, 0xC0FFEE);
+    ASSERT_EQ(0, Compy_RtpReceiver_feed(recv, COMPY_CHANNEL_RTP, pkt, len));
+
+    uint8_t rr[96];
+    ssize_t n =
+        Compy_RtpReceiver_write_rr(recv, 1, 0, "cam@compy", rr, sizeof rr);
+    ASSERT(n > 32);
+    ASSERT_EQ(0, n % 4);     /* compound stays word-aligned */
+    ASSERT_EQ(0x81, rr[32]); /* SDES, one chunk */
+    ASSERT_EQ(202, rr[33]);
+    ASSERT_EQ(1, rr[40]); /* CNAME item */
+    ASSERT_EQ(9, rr[41]);
+    ASSERT_MEM_EQ("cam@compy", rr + 42, 9);
+
+    /* Too-small buffer refuses instead of truncating. */
+    ASSERT_EQ(
+        -1, (int)Compy_RtpReceiver_write_rr(recv, 1, 0, "cam@compy", rr, 40));
+
+    VCALL(DYN(Compy_RtpReceiver, Compy_Droppable, recv), drop);
+    PASS();
+}
+
 SUITE(receiver) {
     RUN_TEST(receiver_feed_audio);
     RUN_TEST(receiver_feed_rtp_too_short);
@@ -218,4 +375,9 @@ SUITE(receiver) {
     RUN_TEST(receiver_feed_invalid_channel);
     RUN_TEST(rtp_header_roundtrip);
     RUN_TEST(backchannel_lifecycle);
+    RUN_TEST(receiver_rr_empty_without_traffic);
+    RUN_TEST(receiver_rr_reports_loss);
+    RUN_TEST(receiver_rr_lsr_dlsr_from_snooped_sr);
+    RUN_TEST(receiver_rr_jitter_zero_on_perfect_cadence);
+    RUN_TEST(receiver_rr_compound_with_cname);
 }
