@@ -297,3 +297,23 @@ ssize_t Compy_RtpReceiver_write_rr(
 
     return (ssize_t)(p - buf);
 }
+
+ssize_t Compy_RtpReceiver_write_bye(
+    Compy_RtpReceiver *self, uint32_t reporter_ssrc, int64_t now_us,
+    const char *cname, uint8_t *buf, size_t cap) {
+    /* BYE closes the compound (RFC 3550 §6.3.7), so reserve its eight
+     * bytes before handing the rest of the buffer to the report. */
+    ssize_t n = Compy_RtpReceiver_write_rr(
+        self, reporter_ssrc, now_us, cname, buf, cap >= 8 ? cap - 8 : 0);
+    if (n <= 0) {
+        return n;
+    }
+    uint8_t *p = buf + n;
+    *p++ = 0x81; /* V=2, SC=1 */
+    *p++ = 203;  /* BYE */
+    *p++ = 0;
+    *p++ = 1; /* length: 2 words - 1 */
+    uint32_t v = htonl(reporter_ssrc);
+    memcpy(p, &v, 4);
+    return n + 8;
+}

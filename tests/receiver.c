@@ -368,6 +368,44 @@ TEST receiver_rr_compound_with_cname(void) {
     PASS();
 }
 
+TEST receiver_bye_closes_the_compound(void) {
+    Compy_AudioReceiver no_audio = {.self = NULL, .vptr = NULL};
+    Compy_RtpReceiver *recv = Compy_RtpReceiver_new(NULL, no_audio);
+
+    uint8_t rr[128];
+    /* No traffic: no report was ever sent, so no BYE is owed. */
+    ASSERT_EQ(
+        0, (int)Compy_RtpReceiver_write_bye(recv, 7, 0, NULL, rr, sizeof rr));
+
+    uint8_t pkt[64];
+    size_t len;
+    build_rtp_packet_seq(pkt, &len, 1, 160, 0xC0FFEE);
+    ASSERT_EQ(0, Compy_RtpReceiver_feed(recv, COMPY_CHANNEL_RTP, pkt, len));
+
+    /* Bare report + BYE. */
+    ssize_t n = Compy_RtpReceiver_write_bye(recv, 7, 0, NULL, rr, sizeof rr);
+    ASSERT_EQ(40, (int)n);
+    ASSERT_EQ(0x81, rr[32]);
+    ASSERT_EQ(203, rr[33]);
+    ASSERT_EQ(1, rr[35]); /* one SSRC, length 1 */
+    uint32_t ssrc;
+    memcpy(&ssrc, rr + 36, 4);
+    ASSERT_EQ(7, ntohl(ssrc));
+
+    /* Full compound keeps BYE last, after the SDES chunk. */
+    n = Compy_RtpReceiver_write_bye(recv, 7, 0, "cam@compy", rr, sizeof rr);
+    ASSERT(n > 40);
+    ASSERT_EQ(0, n % 4);
+    ASSERT_EQ(202, rr[33]);        /* SDES follows the RR */
+    ASSERT_EQ(203, rr[n - 8 + 1]); /* BYE closes the compound */
+
+    /* A buffer that fits the report but not the BYE refuses whole. */
+    ASSERT_EQ(-1, (int)Compy_RtpReceiver_write_bye(recv, 7, 0, NULL, rr, 36));
+
+    VCALL(DYN(Compy_RtpReceiver, Compy_Droppable, recv), drop);
+    PASS();
+}
+
 SUITE(receiver) {
     RUN_TEST(receiver_feed_audio);
     RUN_TEST(receiver_feed_rtp_too_short);
@@ -380,4 +418,5 @@ SUITE(receiver) {
     RUN_TEST(receiver_rr_lsr_dlsr_from_snooped_sr);
     RUN_TEST(receiver_rr_jitter_zero_on_perfect_cadence);
     RUN_TEST(receiver_rr_compound_with_cname);
+    RUN_TEST(receiver_bye_closes_the_compound);
 }

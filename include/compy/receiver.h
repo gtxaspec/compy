@@ -111,4 +111,18 @@ ssize_t Compy_RtpReceiver_write_rr(
     Compy_RtpReceiver *self, uint32_t reporter_ssrc, int64_t now_us,
     const char *cname, uint8_t *buf, size_t cap);
 
+/**
+ * Writes the leave compound (RFC 3550 §6.3.7): the same report
+ * #Compy_RtpReceiver_write_rr produces, with a BYE for
+ * @p reporter_ssrc appended as the compound's final packet. Send it
+ * once, when the reporting participant leaves the session.
+ *
+ * @return As #Compy_RtpReceiver_write_rr — in particular 0 when no
+ * RTP was ever seen, in which case no report was ever sent and no
+ * BYE is owed.
+ */
+ssize_t Compy_RtpReceiver_write_bye(
+    Compy_RtpReceiver *self, uint32_t reporter_ssrc, int64_t now_us,
+    const char *cname, uint8_t *buf, size_t cap);
+
 declImplExtern99(Compy_Droppable, Compy_RtpReceiver);
