@@ -44,6 +44,7 @@ A small, portable [RTSP 1.0] server library in C99, designed for embedded IP cam
    - [x] RTP header deserialization
    - [x] Unified receiver for incoming RTCP and backchannel RTP
    - [x] `AudioReceiver` callback interface for backchannel audio
+   - [x] Reception statistics with receiver reports and the leave BYE compound (RFC 3550 §6.4.2, §6.3.7)
  - TLS backends (compile-time selectable):
    - [x] OpenSSL / LibreSSL
    - [x] wolfSSL
@@ -144,7 +145,9 @@ a=rtpmap:0 PCMU/8000
 a=sendonly
 ```
 
-The `Compy_AudioReceiver` interface delivers incoming backchannel audio to the application via callback.
+The `Compy_AudioReceiver` interface delivers incoming backchannel audio to the application via callback. The receiver passes every payload type through with the packet, so the application may offer several formats on one m-line and dispatch on the RTP PT.
+
+`Compy_RtpReceiver` also keeps reception statistics (RFC 3550 appendix A sequence accounting, interarrival jitter at a configurable clock, snooped sender reports for LSR/DLSR): feed packets with `Compy_RtpReceiver_feed_at`, serialize a receiver report compound with `Compy_RtpReceiver_write_rr`, and announce the leave with `Compy_RtpReceiver_write_bye` when tearing down.
 
 ### SRTP / SRTCP
 
