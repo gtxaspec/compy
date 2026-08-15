@@ -180,7 +180,30 @@ bool compy_require_has_tag(
         return false;
     }
 
-    return CharSlice99_primitive_eq(value, tag);
+    /* The header carries a comma-separated feature-tag list (RFC 2326
+     * §12.32); match membership, not whole-value equality, so a client
+     * sending several tags still negotiates the one asked about. */
+    size_t i = 0;
+    while (i < value.len) {
+        while (i < value.len && (value.ptr[i] == ' ' || value.ptr[i] == '\t' ||
+                                 value.ptr[i] == ',')) {
+            i++;
+        }
+        size_t start = i;
+        while (i < value.len && value.ptr[i] != ',') {
+            i++;
+        }
+        size_t end = i;
+        while (end > start &&
+               (value.ptr[end - 1] == ' ' || value.ptr[end - 1] == '\t')) {
+            end--;
+        }
+        if (end - start == tag.len &&
+            memcmp(value.ptr + start, tag.ptr, tag.len) == 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void compy_respond_option_not_supported(Compy_Context *ctx, CharSlice99 tag) {

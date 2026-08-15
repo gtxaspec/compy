@@ -186,6 +186,27 @@ TEST require_has_tag_missing(void) {
     PASS();
 }
 
+TEST require_has_tag_in_list(void) {
+    Compy_HeaderMap map = Compy_HeaderMap_empty();
+    Compy_HeaderMap_append(
+        &map,
+        (Compy_Header){
+            COMPY_HEADER_REQUIRE,
+            CharSlice99_from_str(
+                "some.other.feature, www.onvif.org/ver20/backchannel , tail")});
+
+    /* Membership across a comma-separated list, whitespace tolerated. */
+    ASSERT(compy_require_has_tag(&map, COMPY_REQUIRE_ONVIF_BACKCHANNEL));
+    ASSERT(compy_require_has_tag(
+        &map, CharSlice99_from_str("some.other.feature")));
+    ASSERT(compy_require_has_tag(&map, CharSlice99_from_str("tail")));
+    /* A tag that is only a prefix of a listed one must not match. */
+    ASSERT_FALSE(compy_require_has_tag(&map, CharSlice99_from_str("some")));
+    ASSERT_FALSE(
+        compy_require_has_tag(&map, CharSlice99_from_str("missing.tag")));
+    PASS();
+}
+
 TEST require_has_tag_wrong(void) {
     Compy_HeaderMap map = Compy_HeaderMap_empty();
     Compy_HeaderMap_append(
@@ -236,6 +257,7 @@ SUITE(util) {
     RUN_TEST(parse_transport_no_server_port);
     RUN_TEST(require_has_tag_present);
     RUN_TEST(require_has_tag_missing);
+    RUN_TEST(require_has_tag_in_list);
     RUN_TEST(require_has_tag_wrong);
     RUN_TEST(respond_option_not_supported);
     RUN_TEST(recv_dgram_socket_binds);
