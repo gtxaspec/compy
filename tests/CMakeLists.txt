@@ -65,6 +65,9 @@ elseif(CMAKE_C_COMPILER_ID STREQUAL "GNU")
 endif()
 
 target_link_options(tests PRIVATE ${SANITIZER_FLAGS})
+# The library is what the tests exercise: instrument it too, or a bad read
+# inside it goes unseen
+target_compile_options(compy PRIVATE ${SANITIZER_FLAGS} -fno-omit-frame-pointer)
 
 target_link_libraries(tests compy)
 target_include_directories(tests PRIVATE ${greatest_SOURCE_DIR})
