@@ -34,17 +34,17 @@ static bool non_whitespace_matcher(char c, void *ctx) {
 
 static bool numeric_matcher(char c, void *ctx) {
     (void)ctx;
-    return isdigit(c);
+    return isdigit((unsigned char)c);
 }
 
 static bool ident_matcher(char c, void *ctx) {
     (void)ctx;
-    return isalnum(c) || c == '_';
+    return isalnum((unsigned char)c) || c == '_';
 }
 
 static bool header_name_char_matcher(char c, void *ctx) {
     (void)ctx;
-    return isalpha(c) || c == '-';
+    return isalpha((unsigned char)c) || c == '-';
 }
 
 static bool char_matcher(char c, void *ctx) {
@@ -125,6 +125,9 @@ Compy_ParseResult compy_match_non_whitespaces(CharSlice99 input) {
 // TODO: refactor the following functions.
 
 Compy_ParseResult compy_match_numeric(CharSlice99 input) {
+    if (CharSlice99_is_empty(input)) {
+        return Compy_ParseResult_partial();
+    }
     if (!numeric_matcher(input.ptr[0], NULL)) {
         return Compy_ParseResult_Failure(
             Compy_ParseError_TypeMismatch(Compy_ParseType_Int, input));
@@ -134,6 +137,9 @@ Compy_ParseResult compy_match_numeric(CharSlice99 input) {
 }
 
 Compy_ParseResult compy_match_ident(CharSlice99 input) {
+    if (CharSlice99_is_empty(input)) {
+        return Compy_ParseResult_partial();
+    }
     if (!ident_matcher(input.ptr[0], NULL)) {
         return Compy_ParseResult_Failure(
             Compy_ParseError_TypeMismatch(Compy_ParseType_Ident, input));
@@ -143,6 +149,9 @@ Compy_ParseResult compy_match_ident(CharSlice99 input) {
 }
 
 Compy_ParseResult compy_match_header_name(CharSlice99 input) {
+    if (CharSlice99_is_empty(input)) {
+        return Compy_ParseResult_partial();
+    }
     if (!header_name_char_matcher(input.ptr[0], NULL)) {
         return Compy_ParseResult_Failure(
             Compy_ParseError_TypeMismatch(Compy_ParseType_HeaderName, input));

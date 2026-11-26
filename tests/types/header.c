@@ -41,7 +41,17 @@ TEST serialize_header(void) {
     PASS();
 }
 
+/* Empty input is Partial: the byte after it, here a junk byte, is not read */
+TEST parse_empty_input_is_partial(void) {
+    char junk[] = "\x01";
+    Compy_Header result;
+    ASSERT(Compy_ParseResult_is_partial(
+        Compy_Header_parse(&result, CharSlice99_new(junk, 0))));
+    PASS();
+}
+
 SUITE(types_header) {
     RUN_TEST(parse_header);
+    RUN_TEST(parse_empty_input_is_partial);
     RUN_TEST(serialize_header);
 }

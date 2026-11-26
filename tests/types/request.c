@@ -4,6 +4,8 @@
 
 #include "test_util.h"
 #include <greatest.h>
+#include <stdlib.h>
+#include <string.h>
 
 DEF_TEST_PARSE(Compy_Request)
 
@@ -129,7 +131,50 @@ TEST parse_request_with_multiple_interleaved(void) {
     PASS();
 }
 
+/*
+ * A request read in pieces can end anywhere. The parser must judge only the
+ * bytes it was given: every prefix of a valid request is Partial, whatever
+ * byte happens to follow it in memory. Each prefix is copied into an exactly
+ * sized allocation with a junk byte after it in a second, larger copy, so a
+ * read one past the input either faults under ASan or sees the junk byte and
+ * turns Partial into Failure.
+ */
+TEST parse_request_prefix_never_reads_past_input(void) {
+    const char *full =
+        "OPTIONS * RTSP/1.0\r\n"
+        "CSeq: 7\r\n"
+        "Session: 12345\r\n"
+        "\r\n";
+    const size_t len = strlen(full);
+
+    for (size_t i = 1; i < len; i++) {
+        char *exact = malloc(i);
+        ASSERT(exact);
+        memcpy(exact, full, i);
+        Compy_Request result = Compy_Request_uninit();
+        Compy_ParseResult ret =
+            Compy_Request_parse(&result, CharSlice99_new(exact, i));
+        free(exact);
+        ASSERTm(
+            "an exact prefix must be Partial",
+            Compy_ParseResult_is_partial(ret));
+
+        char junk[128];
+        ASSERT(i + 1 < sizeof junk);
+        memcpy(junk, full, i);
+        junk[i] = 'X';
+        result = Compy_Request_uninit();
+        ret = Compy_Request_parse(&result, CharSlice99_new(junk, i));
+        ASSERTm(
+            "the byte after the input must not decide the result",
+            Compy_ParseResult_is_partial(ret));
+    }
+
+    PASS();
+}
+
 SUITE(types_request) {
+    RUN_TEST(parse_request_prefix_never_reads_past_input);
     RUN_TEST(parse_request);
     RUN_TEST(serialize_request);
     RUN_TEST(parse_request_with_interleaved_prefix);
