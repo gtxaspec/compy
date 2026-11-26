@@ -122,9 +122,9 @@ if(COMPY_TSAN)
 endif()
 
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
-  target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
+  target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Werror=implicit-function-declaration)
 elseif(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-  target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wno-misleading-indentation)
+  target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Werror=implicit-function-declaration -Wno-misleading-indentation)
 endif()
 
 target_compile_options(${PROJECT_NAME} PRIVATE -ffunction-sections -fdata-sections

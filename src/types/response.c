@@ -1,5 +1,7 @@
 #include <compy/types/response.h>
 
+#include <compy/util.h>
+
 #include "../macros.h"
 #include "parsing.h"
 
