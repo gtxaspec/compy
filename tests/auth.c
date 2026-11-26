@@ -8,6 +8,20 @@
 #include <greatest.h>
 
 #include <string.h>
+#include <time.h>
+
+/* Lets a test move the clock the nonce freshness check sees. */
+static long g_clock_skew_sec;
+
+time_t time(time_t *out) {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    time_t now = ts.tv_sec + g_clock_skew_sec;
+    if (out) {
+        *out = now;
+    }
+    return now;
+}
 
 /* Test credential lookup */
 static bool test_lookup(
@@ -313,8 +327,9 @@ TEST auth_check_bad_format(void) {
 /* Runs the challenge round trip, then answers it with a digest computed over
  * `digest_uri`, sent as `header_uri`, for a request whose line carries
  * `request_uri`. */
-static int
-check_with_uris(char *request_uri, char *header_uri, char *digest_uri) {
+static int check_answer(
+    char *request_uri, char *header_uri, char *digest_uri,
+    long answer_delay_sec, char *answer_out) {
     Compy_Auth *auth = Compy_Auth_new("IP Camera", test_lookup, NULL);
 
     char buf1[1024] = {0};
@@ -350,14 +365,24 @@ check_with_uris(char *request_uri, char *header_uri, char *digest_uri) {
     req2.cseq = 2;
     req2.start_line.method = COMPY_METHOD_DESCRIBE;
     req2.start_line.uri = CharSlice99_from_str(request_uri);
+    g_clock_skew_sec = answer_delay_sec;
     req2.header_map = Compy_HeaderMap_empty();
     Compy_HeaderMap_append(
         &req2.header_map, (Compy_Header){COMPY_HEADER_AUTHORIZATION,
                                          CharSlice99_from_str(auth_header)});
     int ret = compy_auth_check(auth, ctx2, &req2);
+    g_clock_skew_sec = 0;
+    if (answer_out) {
+        snprintf(answer_out, 1024, "%s", buf2);
+    }
     VTABLE(Compy_Context, Compy_Droppable).drop(ctx2);
     Compy_Auth_free(auth);
     return ret;
+}
+
+static int
+check_with_uris(char *request_uri, char *header_uri, char *digest_uri) {
+    return check_answer(request_uri, header_uri, digest_uri, 0, NULL);
 }
 
 TEST auth_check_uri_must_match_request(void) {
@@ -405,6 +430,18 @@ TEST auth_check_uri_forms_accepted(void) {
     PASS();
 }
 
+TEST auth_check_nonce_expires(void) {
+    char *uri = "rtsp://camera/stream";
+    char answer[1024];
+
+    ASSERT_EQ(0, check_answer(uri, uri, uri, 30, answer));
+
+    ASSERT_EQ(-1, check_answer(uri, uri, uri, 61, answer));
+    /* The client is told to retry with the new nonce, not to re-prompt */
+    ASSERT(strstr(answer, "stale=true") != NULL);
+    PASS();
+}
+
 SUITE(auth) {
     RUN_TEST(digest_response_rfc2617);
     RUN_TEST(digest_response_different_methods);
@@ -416,4 +453,5 @@ SUITE(auth) {
     RUN_TEST(auth_check_bad_format);
     RUN_TEST(auth_check_uri_must_match_request);
     RUN_TEST(auth_check_uri_forms_accepted);
+    RUN_TEST(auth_check_nonce_expires);
 }

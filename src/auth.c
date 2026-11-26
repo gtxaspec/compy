@@ -21,8 +21,10 @@
 
 /* --- Digest auth --- */
 
-#define NONCE_LEN        41 /* 8 hex timestamp + '-' + 32 hex digest */
-#define NONCE_WINDOW_SEC 300
+#define NONCE_LEN 41 /* 8 hex timestamp + '-' + 32 hex digest */
+/* A captured Authorization header stays replayable this long: the nonce is
+ * stateless, so there is no per-client use counter to retire it earlier. */
+#define NONCE_WINDOW_SEC 60
 #define MAX_REALM        128
 
 struct Compy_Auth {
@@ -53,18 +55,27 @@ make_nonce(const Compy_Auth *self, uint32_t ts, char out[NONCE_LEN + 1]) {
     snprintf(out, NONCE_LEN + 1, "%s-%s", tshex, digest);
 }
 
-static bool nonce_valid(const Compy_Auth *self, const char *nonce) {
+typedef enum { NONCE_OK, NONCE_STALE, NONCE_BAD } NonceState;
+
+static NonceState nonce_check(const Compy_Auth *self, const char *nonce) {
     if (strlen(nonce) != NONCE_LEN || nonce[8] != '-') {
-        return false;
+        return NONCE_BAD;
     }
     uint32_t ts = (uint32_t)strtoul(nonce, NULL, 16);
-    uint32_t now = (uint32_t)time(NULL);
-    if (now - ts > NONCE_WINDOW_SEC && ts - now > 2) {
-        return false;
-    }
     char expect[NONCE_LEN + 1];
     make_nonce(self, ts, expect);
-    return strcmp(nonce, expect) == 0;
+    uint8_t diff = 0;
+    for (size_t i = 0; i < NONCE_LEN; i++) {
+        diff |= (uint8_t)(nonce[i] ^ expect[i]);
+    }
+    if (diff != 0) {
+        return NONCE_BAD;
+    }
+    uint32_t now = (uint32_t)time(NULL);
+    if (now - ts > NONCE_WINDOW_SEC && ts - now > 2) {
+        return NONCE_STALE;
+    }
+    return NONCE_OK;
 }
 
 static int generate_secret(uint8_t *raw, size_t raw_len) {
@@ -233,6 +244,7 @@ int compy_auth_check(
     assert(ctx);
     assert(req);
 
+    bool stale = false;
     CharSlice99 auth_value;
     if (!Compy_HeaderMap_find(
             &req->header_map, COMPY_HEADER_AUTHORIZATION, &auth_value)) {
@@ -294,7 +306,9 @@ int compy_auth_check(
     }
 
     /* Verify the nonce is ours and fresh */
-    if (!nonce_valid(self, nonce)) {
+    NonceState nonce_state = nonce_check(self, nonce);
+    if (nonce_state != NONCE_OK) {
+        stale = nonce_state == NONCE_STALE;
         goto challenge;
     }
 
@@ -339,8 +353,9 @@ challenge:;
     char fresh[NONCE_LEN + 1];
     make_nonce(self, (uint32_t)time(NULL), fresh);
     compy_header(
-        ctx, COMPY_HEADER_WWW_AUTHENTICATE, "Digest realm=\"%s\", nonce=\"%s\"",
-        self->realm, fresh);
+        ctx, COMPY_HEADER_WWW_AUTHENTICATE,
+        "Digest realm=\"%s\", nonce=\"%s\"%s", self->realm, fresh,
+        stale ? ", stale=true" : "");
     compy_respond(ctx, COMPY_STATUS_UNAUTHORIZED, "Unauthorized");
     return -1;
 }
