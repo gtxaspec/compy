@@ -247,8 +247,51 @@ TEST recv_dgram_socket_binds(void) {
     PASS();
 }
 
+/* RFC 2326 12.39: a single interleaved channel or client port means RTP
+ * there and RTCP on the next one */
+TEST parse_transport_single_values(void) {
+    Compy_TransportConfig config;
+    memset(&config, 0xAA, sizeof config);
+    ASSERT_EQ(
+        0, compy_parse_transport(
+               &config,
+               CharSlice99_from_str("RTP/AVP/TCP;unicast;interleaved=5")));
+    match(config.interleaved) {
+        of(Compy_ChannelPair_Some, val) {
+            ASSERT_EQ(5, val->rtp_channel);
+            ASSERT_EQ(6, val->rtcp_channel);
+        }
+        otherwise FAIL();
+    }
+
+    memset(&config, 0xAA, sizeof config);
+    ASSERT_EQ(
+        0, compy_parse_transport(
+               &config,
+               CharSlice99_from_str("RTP/AVP/UDP;unicast;client_port=5000")));
+    match(config.client_port) {
+        of(Compy_PortPair_Some, val) {
+            ASSERT_EQ(5000, val->rtp_port);
+            ASSERT_EQ(5001, val->rtcp_port);
+        }
+        otherwise FAIL();
+    }
+
+    /* no next channel or port to put RTCP on */
+    ASSERT_EQ(
+        -1, compy_parse_transport(
+                &config,
+                CharSlice99_from_str("RTP/AVP/TCP;unicast;interleaved=255")));
+    ASSERT_EQ(
+        -1, compy_parse_transport(
+                &config,
+                CharSlice99_from_str("RTP/AVP/UDP;unicast;client_port=65535")));
+    PASS();
+}
+
 SUITE(util) {
     RUN_TEST(parse_transport_config);
+    RUN_TEST(parse_transport_single_values);
     RUN_TEST(parse_transport_minimal);
     RUN_TEST(parse_transport_trailing_semicolon);
     RUN_TEST(interleaved_header);

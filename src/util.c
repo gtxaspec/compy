@@ -129,22 +129,28 @@ static int parse_transport_param(
     return 0;
 }
 
+/* RFC 2326 12.39: a single value puts RTCP on the next channel or port */
 static int parse_channel_pair(
     Compy_ChannelPair *restrict val, const char *restrict param) {
-    if (PARSE_RANGE(val->rtp_channel, val->rtcp_channel, SCNu8, param) != 2) {
-        return -1;
+    const int n =
+        PARSE_RANGE(val->rtp_channel, val->rtcp_channel, SCNu8, param);
+    if (n == 1 && val->rtp_channel < UINT8_MAX) {
+        val->rtcp_channel = val->rtp_channel + 1;
+        return 0;
     }
 
-    return 0;
+    return n == 2 ? 0 : -1;
 }
 
 static int
 parse_port_pair(Compy_PortPair *restrict val, const char *restrict param) {
-    if (PARSE_RANGE(val->rtp_port, val->rtcp_port, SCNu16, param) != 2) {
-        return -1;
+    const int n = PARSE_RANGE(val->rtp_port, val->rtcp_port, SCNu16, param);
+    if (n == 1 && val->rtp_port < UINT16_MAX) {
+        val->rtcp_port = val->rtp_port + 1;
+        return 0;
     }
 
-    return 0;
+    return n == 2 ? 0 : -1;
 }
 
 uint32_t compy_interleaved_header(uint8_t channel_id, uint16_t payload_len) {
