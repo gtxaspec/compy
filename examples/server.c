@@ -186,7 +186,12 @@ static int mmap_file(const char *path, uint8_t **out, size_t *out_len) {
 
 #define MAX_STREAMS 3
 
+/* A stream is set up by SETUP and released in one place (Stream_release) by
+ * TEARDOWN, a repeated SETUP or the client going away. Only a set-up stream
+ * matches a session, so an unused slot's session ID of 0 matches nothing. The
+ * transport belongs to the stream until PLAY hands it to the play context. */
 typedef struct {
+    bool set_up;
     uint64_t session_id;
     Compy_RtpTransport *transport;
     Compy_Rtcp *rtcp;
@@ -533,32 +538,41 @@ static void send_rtcp_sr_cb(evutil_socket_t fd, short events, void *arg) {
     }
 }
 
+static void Stream_release(Client *self, size_t stream_id) {
+    Stream *s = &self->streams[stream_id];
+
+    /* Stop the timers first so no callback runs on freed memory */
+    if (s->ev && event_pending(s->ev, EV_TIMEOUT, NULL)) {
+        event_del(s->ev);
+        self->streams_playing--;
+    }
+    if (s->rtcp_ev) {
+        event_del(s->rtcp_ev);
+        event_free(s->rtcp_ev);
+    }
+    /* RTCP refers to the RTP transport: drop it before the transport */
+    if (s->rtcp) {
+        int bye_ret __attribute__((unused)) = Compy_Rtcp_send_bye(s->rtcp);
+        VCALL(DYN(Compy_Rtcp, Compy_Droppable, s->rtcp), drop);
+    }
+    if (s->ctx.vptr != NULL) {
+        VCALL(s->ctx, drop); /* owns the event and the transport */
+    } else if (s->transport) {
+        VTABLE(Compy_RtpTransport, Compy_Droppable).drop(s->transport);
+    }
+    if (BACKCHANNEL_STREAM_ID == stream_id && self->backchannel) {
+        VCALL(DYN(Compy_Backchannel, Compy_Droppable, self->backchannel), drop);
+        self->backchannel = NULL;
+    }
+
+    *s = (Stream){0};
+}
+
 static void Client_drop(VSelf) {
     VSELF(Client);
 
     for (size_t i = 0; i < MAX_STREAMS; i++) {
-        /* Stop stream timer first to prevent callbacks on freed memory */
-        if (self->streams[i].ev) {
-            event_del(self->streams[i].ev);
-        }
-
-        if (self->streams[i].rtcp) {
-            int bye_ret __attribute__((unused)) =
-                Compy_Rtcp_send_bye(self->streams[i].rtcp);
-            if (self->streams[i].rtcp_ev) {
-                event_del(self->streams[i].rtcp_ev);
-                event_free(self->streams[i].rtcp_ev);
-            }
-            VCALL(
-                DYN(Compy_Rtcp, Compy_Droppable, self->streams[i].rtcp), drop);
-        }
-        if (self->streams[i].ctx.vptr != NULL) {
-            VCALL(self->streams[i].ctx, drop);
-        }
-    }
-
-    if (self->backchannel) {
-        VCALL(DYN(Compy_Backchannel, Compy_Droppable, self->backchannel), drop);
+        Stream_release(self, i);
     }
 
     free(self);
@@ -664,11 +678,6 @@ Client_describe(VSelf, Compy_Context *ctx, const Compy_Request *req) {
 static void Client_setup(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     VSELF(Client);
 
-    Compy_Transport transport, rtcp_transport;
-    if (setup_transport(self, ctx, req, &transport, &rtcp_transport) == -1) {
-        return;
-    }
-
     size_t stream_id;
     if (CharSlice99_primitive_ends_with(
             req->start_line.uri, CharSlice99_from_str("/audioback"))) {
@@ -681,28 +690,35 @@ static void Client_setup(VSelf, Compy_Context *ctx, const Compy_Request *req) {
     }
     Stream *stream = &self->streams[stream_id];
 
+    uint64_t session_id;
     const bool aggregate_control_requested =
         Compy_HeaderMap_contains_key(&req->header_map, COMPY_HEADER_SESSION);
     if (aggregate_control_requested) {
-        uint64_t session_id;
         if (compy_scanf_header(
                 &req->header_map, COMPY_HEADER_SESSION, "%" SCNu64,
                 &session_id) != 1) {
             compy_respond(ctx, COMPY_STATUS_BAD_REQUEST, "Malformed `Session'");
             return;
         }
-
-        stream->session_id = session_id;
     } else {
-        {
-            uint64_t sid;
-            FILE *f = fopen("/dev/urandom", "r");
-            assert(f);
-            assert(fread(&sid, sizeof sid, 1, f) == 1);
-            fclose(f);
-            stream->session_id = sid;
-        }
+        FILE *f = fopen("/dev/urandom", "r");
+        assert(f);
+        assert(fread(&session_id, sizeof session_id, 1, f) == 1);
+        fclose(f);
     }
+
+    /* A repeated SETUP replaces the stream: release the old one first */
+    if (stream->set_up) {
+        Stream_release(self, stream_id);
+    }
+
+    /* Acquire the transport last, so an earlier refusal leaks nothing */
+    Compy_Transport transport, rtcp_transport;
+    if (setup_transport(self, ctx, req, &transport, &rtcp_transport) == -1) {
+        return;
+    }
+    stream->session_id = session_id;
+    stream->set_up = true;
 
     if (BACKCHANNEL_STREAM_ID == stream_id) {
         /* Backchannel: no outbound RTP transport needed, create receiver */
@@ -745,7 +761,15 @@ static void Client_play(VSelf, Compy_Context *ctx, const Compy_Request *req) {
 
     bool played = false;
     for (size_t i = 0; i < MAX_STREAMS; i++) {
-        if (self->streams[i].session_id == session_id) {
+        if (self->streams[i].set_up &&
+            self->streams[i].session_id == session_id) {
+            /* The backchannel only receives, and a playing stream keeps
+             * playing: PLAY is accepted for both, nothing is started */
+            if (BACKCHANNEL_STREAM_ID == i ||
+                self->streams[i].ctx.vptr != NULL) {
+                played = true;
+                continue;
+            }
             if (AUDIO_STREAM_ID == i) {
                 self->streams[i].ctx = play_audio(
                     self->base, self->bev, self->streams[i].transport,
@@ -796,8 +820,9 @@ Client_teardown(VSelf, Compy_Context *ctx, const Compy_Request *req) {
 
     bool teardowned = false;
     for (size_t i = 0; i < MAX_STREAMS; i++) {
-        if (self->streams[i].session_id == session_id) {
-            event_del(self->streams[i].ev);
+        if (self->streams[i].set_up &&
+            self->streams[i].session_id == session_id) {
+            Stream_release(self, i);
             teardowned = true;
         }
     }
@@ -916,7 +941,8 @@ static int setup_transport(
 static int setup_tcp(
     Compy_Context *ctx, Compy_Transport *t, Compy_Transport *rtcp_t,
     Compy_TransportConfig config) {
-    ifLet(config.interleaved, Compy_ChannelPair_Some, interleaved) {
+    ifLet(config.interleaved, Compy_ChannelPair_Some, interleaved)
+    {
         *t = compy_transport_tcp(
             Compy_Context_get_writer(ctx), interleaved->rtp_channel, 0);
         *rtcp_t = compy_transport_tcp(
@@ -937,7 +963,8 @@ static int setup_udp(
     const struct sockaddr *addr, Compy_Context *ctx, Compy_Transport *t,
     Compy_Transport *rtcp_t, Compy_TransportConfig config) {
 
-    ifLet(config.client_port, Compy_PortPair_Some, client_port) {
+    ifLet(config.client_port, Compy_PortPair_Some, client_port)
+    {
         int fd;
         if ((fd = compy_dgram_socket(
                  addr->sa_family, compy_sockaddr_ip(addr),

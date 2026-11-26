@@ -76,6 +76,25 @@ jobs:
           cmake --build build
           ./build/tests
 
+  example-out-of-order:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake libevent-dev python3
+
+      - name: Build the example server with ASan/UBSan
+        run: |
+          cmake -S examples -B examples/build -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          cmake --build examples/build
+
+      - name: Out-of-order request sequences
+        run: |
+          cd examples
+          python3 tests/out_of_order.py build/server media
+
   check-format:
     runs-on: ubuntu-latest
     steps:
