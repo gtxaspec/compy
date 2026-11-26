@@ -702,9 +702,15 @@ static void Client_setup(VSelf, Compy_Context *ctx, const Compy_Request *req) {
         }
     } else {
         FILE *f = fopen("/dev/urandom", "r");
-        assert(f);
-        assert(fread(&session_id, sizeof session_id, 1, f) == 1);
-        fclose(f);
+        const bool got = f && fread(&session_id, sizeof session_id, 1, f) == 1;
+        if (f) {
+            fclose(f);
+        }
+        if (!got) {
+            compy_respond(
+                ctx, COMPY_STATUS_INTERNAL_SERVER_ERROR, "No session id");
+            return;
+        }
     }
 
     /* A repeated SETUP replaces the stream: release the old one first */
