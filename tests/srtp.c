@@ -667,6 +667,48 @@ TEST srtp_oversized_packet_rejected(void) {
     PASS();
 }
 
+TEST srtp_recv_oversized_packet_rejected(void) {
+    Compy_SrtpKeyMaterial key;
+    ASSERT_EQ(0, compy_srtp_generate_key(&key));
+    Compy_SrtpRecvCtx *recv_ctx =
+        compy_srtp_recv_new(Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &key);
+
+    uint8_t *buf = calloc(1, 4096);
+    ASSERT(buf);
+    buf[0] = 0x80;
+    buf[1] = 96;
+
+    const size_t sizes[] = {2049, 2100, 4000};
+    for (size_t i = 0; i < sizeof sizes / sizeof sizes[0]; i++) {
+        size_t len = sizes[i];
+        ASSERT_EQ(-1, compy_srtp_recv_unprotect(recv_ctx, buf, &len));
+        ASSERT_EQ(sizes[i], len);
+    }
+
+    free(buf);
+    compy_srtp_recv_free(recv_ctx);
+    PASS();
+}
+
+TEST srtcp_recv_oversized_packet_rejected(void) {
+    Compy_SrtpKeyMaterial key;
+    ASSERT_EQ(0, compy_srtp_generate_key(&key));
+    Compy_SrtpRecvCtx *recv_ctx =
+        compy_srtp_recv_new(Compy_SrtpSuite_AES_CM_128_HMAC_SHA1_80, &key);
+
+    uint8_t *buf = calloc(1, 4096);
+    ASSERT(buf);
+    buf[0] = 0x80;
+    buf[1] = 200;
+
+    size_t len = 4000;
+    ASSERT_EQ(-1, compy_srtcp_recv_unprotect(recv_ctx, buf, &len));
+
+    free(buf);
+    compy_srtp_recv_free(recv_ctx);
+    PASS();
+}
+
 TEST srtp_with_csrc_and_extension(void) {
     int fds[2];
     ASSERT(socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds) == 0);
@@ -1078,6 +1120,8 @@ SUITE(srtp) {
     RUN_TEST(srtp_32_encrypt_decrypt);
     RUN_TEST(srtp_max_size_packet);
     RUN_TEST(srtp_oversized_packet_rejected);
+    RUN_TEST(srtp_recv_oversized_packet_rejected);
+    RUN_TEST(srtcp_recv_oversized_packet_rejected);
     RUN_TEST(srtp_with_csrc_and_extension);
     RUN_TEST(srtcp_replay_rejected);
     RUN_TEST(srtcp_out_of_order_accepted);

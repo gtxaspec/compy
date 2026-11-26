@@ -632,7 +632,7 @@ int compy_srtp_recv_unprotect(
     assert(data);
     assert(len);
 
-    if (*len < 12 + (size_t)ctx->auth_tag_len) {
+    if (*len < 12 + (size_t)ctx->auth_tag_len || *len > SRTP_MAX_PACKET_SIZE) {
         return -1;
     }
 
@@ -709,7 +709,8 @@ int compy_srtcp_recv_unprotect(
     assert(len);
 
     /* Minimum: 8 (RTCP header) + 4 (SRTCP index) + auth_tag */
-    if (*len < 8 + 4 + (size_t)ctx->auth_tag_len) {
+    if (*len < 8 + 4 + (size_t)ctx->auth_tag_len ||
+        *len > SRTP_MAX_PACKET_SIZE) {
         return -1;
     }
 
