@@ -234,10 +234,11 @@ ssize_t Compy_RtpReceiver_write_rr(
     uint32_t received_interval = st->received - st->received_prior;
     st->expected_prior = expected;
     st->received_prior = st->received;
-    int32_t lost_interval = (int32_t)(expected_interval - received_interval);
+    int64_t lost_interval = (int64_t)expected_interval - received_interval;
     uint8_t fraction = 0;
     if (expected_interval > 0 && lost_interval > 0) {
-        fraction = (uint8_t)((lost_interval << 8) / expected_interval);
+        uint64_t f = ((uint64_t)lost_interval << 8) / expected_interval;
+        fraction = f > 255 ? 255 : (uint8_t)f;
     }
 
     uint32_t dlsr = 0;

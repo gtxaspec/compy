@@ -278,6 +278,33 @@ TEST receiver_rr_reports_loss(void) {
     PASS();
 }
 
+TEST receiver_rr_fraction_after_huge_sequence_jump(void) {
+    Compy_AudioReceiver no_audio = {.self = NULL, .vptr = NULL};
+    Compy_RtpReceiver *recv = Compy_RtpReceiver_new(NULL, no_audio);
+
+    /* 700 packets, each 30000 sequence numbers after the last: about 21M
+     * expected, so the interval's loss << 8 exceeds 2^32 */
+    uint8_t pkt[64];
+    size_t len;
+    uint16_t seq = 1;
+    for (int i = 0; i < 700; i++) {
+        build_rtp_packet_seq(pkt, &len, seq, 160u * (uint32_t)i, 0xC0FFEE);
+        ASSERT_EQ(0, Compy_RtpReceiver_feed(recv, COMPY_CHANNEL_RTP, pkt, len));
+        seq = (uint16_t)(seq + 30000);
+    }
+
+    uint8_t rr[64];
+    ASSERT_EQ(
+        32,
+        (int)Compy_RtpReceiver_write_rr(recv, 0x1234, 0, NULL, rr, sizeof rr));
+    uint32_t loss_word;
+    memcpy(&loss_word, rr + 12, 4);
+    ASSERT_EQ(255, (int)(ntohl(loss_word) >> 24));
+
+    VCALL(DYN(Compy_RtpReceiver, Compy_Droppable, recv), drop);
+    PASS();
+}
+
 TEST receiver_rr_lsr_dlsr_from_snooped_sr(void) {
     Compy_AudioReceiver no_audio = {.self = NULL, .vptr = NULL};
     Compy_RtpReceiver *recv = Compy_RtpReceiver_new(NULL, no_audio);
@@ -415,6 +442,7 @@ SUITE(receiver) {
     RUN_TEST(backchannel_lifecycle);
     RUN_TEST(receiver_rr_empty_without_traffic);
     RUN_TEST(receiver_rr_reports_loss);
+    RUN_TEST(receiver_rr_fraction_after_huge_sequence_jump);
     RUN_TEST(receiver_rr_lsr_dlsr_from_snooped_sr);
     RUN_TEST(receiver_rr_jitter_zero_on_perfect_cadence);
     RUN_TEST(receiver_rr_compound_with_cname);
