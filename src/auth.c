@@ -197,6 +197,36 @@ static int parse_digest_param(
     return 0;
 }
 
+/*
+ * The digest only proves the client knew the password for the `uri` it
+ * signed, so that uri has to be the one being requested. Clients differ on
+ * absolute vs path-only forms between the request line and the header, so
+ * the scheme and authority are dropped from both sides and the rest must be
+ * identical.
+ */
+static const char *uri_path(const char *uri, size_t len, size_t *path_len) {
+    const char *end = uri + len;
+    const char *sep = memchr(uri, ':', len);
+    if (sep && end - sep >= 3 && sep[1] == '/' && sep[2] == '/' &&
+        !memchr(uri, '/', (size_t)(sep - uri))) {
+        const char *slash = memchr(sep + 3, '/', (size_t)(end - (sep + 3)));
+        if (!slash) {
+            *path_len = 1;
+            return "/";
+        }
+        uri = slash;
+    }
+    *path_len = (size_t)(end - uri);
+    return uri;
+}
+
+static bool uri_matches_request(const char *header_uri, CharSlice99 request) {
+    size_t a_len, b_len;
+    const char *a = uri_path(header_uri, strlen(header_uri), &a_len);
+    const char *b = uri_path(request.ptr, request.len, &b_len);
+    return a_len == b_len && memcmp(a, b, a_len) == 0;
+}
+
 int compy_auth_check(
     Compy_Auth *self, Compy_Context *ctx, const Compy_Request *req) {
     assert(self);
@@ -256,6 +286,10 @@ int compy_auth_check(
 
     /* Verify realm matches */
     if (strcmp(realm, self->realm) != 0) {
+        goto challenge;
+    }
+
+    if (!uri_matches_request(uri, req->start_line.uri)) {
         goto challenge;
     }
 

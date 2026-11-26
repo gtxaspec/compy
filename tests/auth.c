@@ -310,6 +310,101 @@ TEST auth_check_bad_format(void) {
     PASS();
 }
 
+/* Runs the challenge round trip, then answers it with a digest computed over
+ * `digest_uri`, sent as `header_uri`, for a request whose line carries
+ * `request_uri`. */
+static int
+check_with_uris(char *request_uri, char *header_uri, char *digest_uri) {
+    Compy_Auth *auth = Compy_Auth_new("IP Camera", test_lookup, NULL);
+
+    char buf1[1024] = {0};
+    Compy_Writer w1 = compy_string_writer(buf1);
+    Compy_Context *ctx1 = Compy_Context_new(w1, 1);
+    Compy_Request req1 = Compy_Request_uninit();
+    req1.cseq = 1;
+    req1.start_line.method = COMPY_METHOD_DESCRIBE;
+    req1.start_line.uri = CharSlice99_from_str(request_uri);
+    req1.header_map = Compy_HeaderMap_empty();
+    int first_ret __attribute__((unused)) = compy_auth_check(auth, ctx1, &req1);
+
+    char *nonce_start = strstr(buf1, "nonce=\"") + strlen("nonce=\"");
+    char nonce[64] = {0};
+    memcpy(
+        nonce, nonce_start, (size_t)(strchr(nonce_start, '"') - nonce_start));
+    VTABLE(Compy_Context, Compy_Droppable).drop(ctx1);
+
+    char digest[33];
+    compy_digest_response(
+        digest, "admin", "IP Camera", "secret", nonce, "DESCRIBE", digest_uri);
+    char auth_header[512];
+    snprintf(
+        auth_header, sizeof auth_header,
+        "Digest username=\"admin\", realm=\"IP Camera\", "
+        "nonce=\"%s\", uri=\"%s\", response=\"%s\"",
+        nonce, header_uri, digest);
+
+    char buf2[1024] = {0};
+    Compy_Writer w2 = compy_string_writer(buf2);
+    Compy_Context *ctx2 = Compy_Context_new(w2, 2);
+    Compy_Request req2 = Compy_Request_uninit();
+    req2.cseq = 2;
+    req2.start_line.method = COMPY_METHOD_DESCRIBE;
+    req2.start_line.uri = CharSlice99_from_str(request_uri);
+    req2.header_map = Compy_HeaderMap_empty();
+    Compy_HeaderMap_append(
+        &req2.header_map, (Compy_Header){COMPY_HEADER_AUTHORIZATION,
+                                         CharSlice99_from_str(auth_header)});
+    int ret = compy_auth_check(auth, ctx2, &req2);
+    VTABLE(Compy_Context, Compy_Droppable).drop(ctx2);
+    Compy_Auth_free(auth);
+    return ret;
+}
+
+TEST auth_check_uri_must_match_request(void) {
+    /* A header captured for one URI must not open another */
+    ASSERT_EQ(
+        -1, check_with_uris(
+                "rtsp://camera/stream1", "rtsp://camera/stream0",
+                "rtsp://camera/stream0"));
+    ASSERT_EQ(
+        -1, check_with_uris("rtsp://camera/stream1", "/stream0", "/stream0"));
+    /* Same prefix, different path */
+    ASSERT_EQ(
+        -1, check_with_uris(
+                "rtsp://camera/stream1", "rtsp://camera/stream",
+                "rtsp://camera/stream"));
+    ASSERT_EQ(
+        -1, check_with_uris(
+                "rtsp://camera/stream", "rtsp://camera/stream1",
+                "rtsp://camera/stream1"));
+    /* uri parameter matches the request but the digest was over another */
+    ASSERT_EQ(
+        -1, check_with_uris(
+                "rtsp://camera/stream1", "rtsp://camera/stream1",
+                "rtsp://camera/stream0"));
+    PASS();
+}
+
+TEST auth_check_uri_forms_accepted(void) {
+    ASSERT_EQ(
+        0, check_with_uris(
+               "rtsp://camera/stream", "rtsp://camera/stream",
+               "rtsp://camera/stream"));
+    /* Clients disagree on absolute vs path-only between the request line
+     * and the Authorization header */
+    ASSERT_EQ(
+        0, check_with_uris(
+               "rtsp://camera:554/stream?x=1", "/stream?x=1", "/stream?x=1"));
+    ASSERT_EQ(
+        0, check_with_uris(
+               "/stream", "rtsp://camera/stream", "rtsp://camera/stream"));
+    ASSERT_EQ(
+        0, check_with_uris(
+               "rtsp://camera/stream/track1", "rtsp://camera/stream/track1",
+               "rtsp://camera/stream/track1"));
+    PASS();
+}
+
 SUITE(auth) {
     RUN_TEST(digest_response_rfc2617);
     RUN_TEST(digest_response_different_methods);
@@ -319,4 +414,6 @@ SUITE(auth) {
     RUN_TEST(auth_check_wrong_password);
     RUN_TEST(auth_check_unknown_user);
     RUN_TEST(auth_check_bad_format);
+    RUN_TEST(auth_check_uri_must_match_request);
+    RUN_TEST(auth_check_uri_forms_accepted);
 }
