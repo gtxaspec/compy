@@ -231,11 +231,33 @@ static const char *uri_path(const char *uri, size_t len, size_t *path_len) {
     return uri;
 }
 
+/*
+ * live555 (openRTSP, VLC) signs every request with the session base URL, so
+ * a track SETUP ("/ch0/video") arrives with the stream's uri ("/ch0/"). A
+ * stream's uri therefore also covers its direct children; never the root,
+ * and never a uri with a query.
+ */
 static bool uri_matches_request(const char *header_uri, CharSlice99 request) {
     size_t a_len, b_len;
     const char *a = uri_path(header_uri, strlen(header_uri), &a_len);
     const char *b = uri_path(request.ptr, request.len, &b_len);
-    return a_len == b_len && memcmp(a, b, a_len) == 0;
+    if (a_len == b_len && memcmp(a, b, a_len) == 0) {
+        return true;
+    }
+    if (a_len > 1 && a[a_len - 1] == '/') {
+        a_len--;
+    }
+    if (b_len > 1 && b[b_len - 1] == '/') {
+        b_len--;
+    }
+    if (a_len > 1 && a_len == b_len && memcmp(a, b, a_len) == 0) {
+        return true;
+    }
+    if (a_len <= 1 || memchr(a, '?', a_len) || b_len <= a_len ||
+        memcmp(a, b, a_len) != 0 || b[a_len] != '/') {
+        return false;
+    }
+    return b_len > a_len + 1 && !memchr(b + a_len + 1, '/', b_len - a_len - 1);
 }
 
 int compy_auth_check(

@@ -430,6 +430,45 @@ TEST auth_check_uri_forms_accepted(void) {
     PASS();
 }
 
+TEST auth_check_base_uri_covers_its_tracks(void) {
+    /* live555 (openRTSP, VLC) signs every request with the session base URL
+     * (Content-Base), so a SETUP of a track carries the stream's uri */
+    ASSERT_EQ(
+        0, check_with_uris(
+               "rtsp://camera:554/ch0/video", "rtsp://camera:554/ch0/",
+               "rtsp://camera:554/ch0/"));
+    ASSERT_EQ(
+        0, check_with_uris(
+               "rtsp://camera/ch0/audio", "rtsp://camera/ch0",
+               "rtsp://camera/ch0"));
+    ASSERT_EQ(0, check_with_uris("rtsp://camera/ch0/", "/ch0", "/ch0"));
+    /* ...but only that stream's own tracks */
+    ASSERT_EQ(
+        -1, check_with_uris(
+                "rtsp://camera/ch1/video", "rtsp://camera/ch0/",
+                "rtsp://camera/ch0/"));
+    ASSERT_EQ(
+        -1, check_with_uris(
+                "rtsp://camera/ch0/video/x", "rtsp://camera/ch0/",
+                "rtsp://camera/ch0/"));
+    ASSERT_EQ(
+        -1, check_with_uris(
+                "rtsp://camera/ch0x/video", "rtsp://camera/ch0",
+                "rtsp://camera/ch0"));
+    ASSERT_EQ(
+        -1, check_with_uris(
+                "rtsp://camera/ch0", "rtsp://camera/", "rtsp://camera/"));
+    ASSERT_EQ(
+        -1, check_with_uris("rtsp://camera/ch0/video", "/ch0?a=1", "/ch0?a=1"));
+    /* A sibling whose name extends the stream's is not its child */
+    ASSERT_EQ(-1, check_with_uris("rtsp://camera/ch0ab", "/ch0", "/ch0"));
+    /* Neither a uri with a query nor the root covers anything below it */
+    ASSERT_EQ(
+        -1, check_with_uris("rtsp://camera/ch0?a=1/x", "/ch0?a=1", "/ch0?a=1"));
+    ASSERT_EQ(-1, check_with_uris("rtsp://camera//x", "/", "/"));
+    PASS();
+}
+
 TEST auth_check_nonce_expires(void) {
     char *uri = "rtsp://camera/stream";
     char answer[1024];
@@ -453,5 +492,6 @@ SUITE(auth) {
     RUN_TEST(auth_check_bad_format);
     RUN_TEST(auth_check_uri_must_match_request);
     RUN_TEST(auth_check_uri_forms_accepted);
+    RUN_TEST(auth_check_base_uri_covers_its_tracks);
     RUN_TEST(auth_check_nonce_expires);
 }
